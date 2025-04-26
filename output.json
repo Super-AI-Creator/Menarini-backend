@@ -1,0 +1,32 @@
+[
+    {
+        "PO#": "P01-006452",
+        "Vendor Part Code": "6004-11231-20",
+        "Customer Part Code": "RBMENSYM VN2004",
+        "GIC Code": "F00015216",
+        "Packing Slip#": "191419",
+        "Quantity": "5000",
+        "Batch#": "240239",
+        "Manufacturing Date": "",
+        "Expiry Date": "15/07/2027",
+        "Document Date": "29-OCT-2024",
+        "Supplier Name": "PHARDIAG",
+        "Incoterm": "CIP",
+        "Item Description": "SYMPAL 25MGX20 (VN)"
+    },
+    {
+        "PO#": "P0O1-006792",
+        "Vendor Part Code": "6004-11231-20",
+        "Customer Part Code": "RBMENSYM VN2004",
+        "GIC Code": "F00015216",
+        "Packing Slip#": "191419",
+        "Quantity": "8080",
+        "Batch#": "240662",
+        "Manufacturing Date": "",
+        "Expiry Date": "15/07/2027",
+        "Document Date": "29-OCT-2024",
+        "Supplier Name": "PHARDIAG",
+        "Incoterm": "CIP",
+        "Item Description": "SYMPAL 25MGX20 (VN)"
+    }
+]
