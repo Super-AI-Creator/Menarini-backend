@@ -54,9 +54,10 @@ def login():
         # access_token = create_access_token(identity=user.id)
         # return jsonify(access_token=access_token), 200
     
+    print(email)
     conn = get_db_connection()
     cursor = conn.cursor()
-    query = """SELECT `password`,`role` FROM user WHERE `email` = %s"""   
+    query = """SELECT `password`,`role`,`username` FROM user WHERE `email` = %s"""   
     cursor.execute(query, (email,))
     result = cursor.fetchone()
     print(result)    
@@ -66,10 +67,10 @@ def login():
             if check_password_hash(result[0], password):
                 access_token = create_access_token(identity=email)
                 if result[1] == 1:           
-                    return jsonify({"token":access_token,"user":{"role":"admin","email":email}})
+                    return jsonify({"token":access_token,"user":{"role":"admin","email":email,"name":result[2]}})
                 
                 else:              
-                    return jsonify({"token":access_token,"user":{"role":"user","email":email}})
+                    return jsonify({"token":access_token,"user":{"role":"user","email":email,"name":result[2]}})
         
     cursor.close()
     conn.close()
@@ -82,7 +83,7 @@ def verify():
     email = get_jwt_identity()
     conn = get_db_connection()
     cursor = conn.cursor()
-    query = """SELECT `password`,`role` FROM user WHERE `email` = %s"""   
+    query = """SELECT `password`,`role`,`username` FROM user WHERE `email` = %s"""   
     cursor.execute(query, (email,))
     result = cursor.fetchone()
     print(result)    
@@ -90,10 +91,10 @@ def verify():
     if result:
         access_token = create_access_token(identity=email)
         if result[1] == 1:           
-            return jsonify({"token":access_token,"user":{"role":"admin","email":email}})
+            return jsonify({"token":access_token,"user":{"role":"admin","email":email,"name":result[2]}})
         
         else:              
-            return jsonify({"token":access_token,"user":{"role":"user","email":email}})
+            return jsonify({"token":access_token,"user":{"role":"user","email":email,"name":result[2]}})
 
     cursor.close()
     conn.close()
@@ -105,19 +106,20 @@ def get_user_info(email, firstname,lastname):
     full_name = firstname+lastname
     conn = get_db_connection()
     cursor = conn.cursor()
-    query = """SELECT `password`,`role` FROM user WHERE `email` = %s"""   
+    query = """SELECT `password`,`role`,`username` FROM user WHERE `email` = %s"""   
     cursor.execute(query, (email,))
     result = cursor.fetchone()
     
     if result:
         access_token = create_access_token(identity=email)
         if result[1] == 1:           
-            return jsonify({"success":"login success" , "token":access_token,"user":{"role":"admin","email":email}})
+            return jsonify({"success":"login success" , "token":access_token,"user":{"role":"admin","email":email,"name":result[2]}})
         
         else:              
-            return jsonify({"success":"login success" , "token":access_token,"user":{"role":"user","email":email}})
+            return jsonify({"success":"login success" , "token":access_token,"user":{"role":"user","email":email,"name":result[2]}})
     else:
         role = 2
+        
         query = """SELECT `id` FROM admin_table WHERE `email` = %s """
         cursor.execute(query, (email,))
         result = cursor.fetchone()
@@ -129,3 +131,29 @@ def get_user_info(email, firstname,lastname):
         conn.commit()
         return jsonify({"success":"pre-register success","email":email,"name":full_name }) 
        
+
+
+@bp.route('/change_password', methods=['Post'])
+def change_password():
+    data = request.get_json()
+    currentPassword = data.get('currentPassword')
+    newPassword = data.get('newPassword')
+    email = data.get('email')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """SELECT `password` FROM user WHERE `email` = %s"""   
+    cursor.execute(query, (email,))
+    result = cursor.fetchone()
+    print(result)    
+    
+    if result:
+        if check_password_hash(result[0], currentPassword):
+            
+            hashed_password = generate_password_hash(newPassword)
+            query = """UPDATE `user` SET password = %s  WHERE `email` = %s"""   
+            cursor.execute(query, (hashed_password,email,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({'msg': 'Password Updated'}), 201

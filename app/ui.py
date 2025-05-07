@@ -4,7 +4,6 @@ import json
 from .email_handler import extract_email_content
 from .iterative_classifier import iterative_classification
 from .po_extraction import extract_po_details
-from .setup_model import setup_text_gen_model
 from app.test_email import detect_new_emails
 from app.email_handle.google_drive import detect_and_process_uploads
 # from flask_cors import CORS

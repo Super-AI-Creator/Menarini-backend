@@ -8,14 +8,13 @@ from google.oauth2 import service_account
 from app.config.env import DOWNLOAD_FOLDER
 from app.file_parser import parse_attachment
 from app.config.database_env import database_host, database_user, database_password, database
-from app.setup_model import setup_text_gen_model
 
-from app.email_handle.google_drive import get_files_from_drive, download_file_from_drive
+from app.email_handle.google_drive import delete_file_from_drive,get_files_from_drive, download_file_from_drive
 from app.email_handle.pdf2text import extract_text_with_positions_from_scanned_pdf
 from app.email_handle.extractfields import extract_field, extract_document_field
 from app.email_handle.extractfields import get_basic_data
 from datetime import datetime
-from app.email_handle.database_handler import logo_check,new_log_sheet,insert_ocr_result, get_supplier_domain,email_new_attachment,multi_doc_intervention,supplier_name_intervention, attatchment_error,email_no_domain, set_complete_flag, set_item_count_for_attachments,get_supplier_from_logo, new_turn, new_attachment,get_supplier, start_ocr, get_exist_attachment, exist_supplier_domain_and_name, new_supplier_domain_and_name, set_supplier_for_attachments
+from app.email_handle.database_handler import insert_into_ocr_table,duplicated_test,insert_attachment_state,delete_database_data,get_supplier_information,set_incoterms_for_dn,set_date_format_for_dn,insert_date_notification,remove_google_drive_change,logo_check,new_log_sheet,insert_ocr_result, get_supplier_domain,email_new_attachment,multi_doc_intervention,supplier_name_intervention, attatchment_error,email_no_domain, set_complete_flag, set_item_count_for_attachments,get_supplier_from_logo, new_turn, new_attachment,get_supplier, start_ocr, get_exist_attachment, exist_supplier_domain_and_name, new_supplier_domain_and_name, set_supplier_for_attachments
 import json
 import csv
 import cv2
@@ -23,19 +22,26 @@ import numpy as np
 import fitz  # PyMuPDF (for PDF handling)
 from PIL import Image
 import tempfile
-from app.config.env import Logo_Folder
 import pandas as pd
 from app import socketio 
+import difflib
+from app.config.env import DOWNLOAD_FOLDER,SERVICE_ACCOUNT_FILE,FOLDER_ID,LOGO_FOLDER
+from app.email_handle.ocr_handler import extract_matching_values_with_positions
 
-file_path = r"D:\KingTiger\email\Email_po_extraction-main\AX09.xls"
+# file_path = r"E:\monte_working\Menarini-backend-main\Menarini-backend-main\app\email_handle\AX09.xls"
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, SERVICE_ACCOUNT_FILE)
+FOLDER_ID = FOLDER_ID
 
 SupplierDomain = "S93T"
-text_gen_model = setup_text_gen_model()
 
-logos_folder_path = Logo_Folder
+logos_folder_path = LOGO_FOLDER
 
-SERVICE_ACCOUNT_FILE = r'D:\KingTiger\email\Email_po_extraction-main\app\email_handle\neon-rite-449718-m4-0a3e2d4992a8.json'  # Path to your service account JSON file
-FOLDER_ID = '1dIgQL8iZKT2EMT_bBDtJCI1PSlfei0FG'  # Google Drive folder ID to upload files into
+# SERVICE_ACCOUNT_FILE = r'E:\monte_working\Menarini-backend-main\Menarini-backend-main\app\email_handle\neon-rite-449718-m4-0a3e2d4992a8.json'  # Path to your service account JSON file
+# FOLDER_ID = '1dIgQL8iZKT2EMT_bBDtJCI1PSlfei0FG'  # Google Drive folder ID to upload files into
+
 
 # Define the scopes for the Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -430,9 +436,57 @@ def extract_top_20_percent(pdf_path, output_image_path):
 
 
 
+def flatten_data(data):
+    """
+    Flattens the data if it's a 2-level array.
+    Returns a 1-level dictionary from the first value.
+    """
+    if isinstance(data, list):  # It's either a 1-level or 2-level array
+        if isinstance(data[0], list):  # 2-level array
+            return data[0][0]  # Flatten it by accessing the first item
+        else:  # 1-level array
+            return data[0]  # Access the first item of the 1-level array
+    return data
+    
+def are_files_similar(file1, file2, threshold=0.98):
+    with open(file1, 'r', encoding='utf-8') as f1, open(file2, 'r', encoding='utf-8') as f2:
+        content1 = f1.read()
+        content2 = f2.read()
+        ratio = difflib.SequenceMatcher(None, content1, content2).ratio()
+        return ratio >= threshold, ratio
 
-    
-    
+def duplicate_document_detection(new_document,doc_type, dn):
+    extract_text_with_positions_from_scanned_pdf(new_document,"output.txt")
+    origin_doc_path = ""
+    result = get_supplier_information(dn)
+    files = get_files_from_drive(result["domain"], result["name"], dn)
+
+    print('----------------')
+    origin_file_id = ""
+    for file in files:
+        filename = file["name"]  # Extract only the filename
+        file_id = file["id"]  # Extract file ID
+        parts = filename.split("!")
+        result = ""
+        if len(parts) > 2:
+            result = parts[1]
+            if result == doc_type:
+                print("-------------------")
+                print(result)
+                origin_file_id = file_id
+                download_file_from_drive(file_id, filename)
+                origin_doc_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+                break
+    extract_text_with_positions_from_scanned_pdf(origin_doc_path,"output1.txt")
+    is_similar, similarity = are_files_similar("output.txt", "output1.txt")
+    if is_similar:
+        return 1
+    else:
+        # delete_file_from_drive(origin_file_id)
+        # delete_database_data(doc_type,dn)
+        return -1
+
+
 def analysis_email(subject, sender, body, attachments, emailID,admin_email,date):
     
     SupplierDomain = get_supplier_domain(sender)
@@ -478,6 +532,7 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
     
     supplier_name = ""
     doc_type_list = []
+    document_name_list = []
     dn_po_number=""
     for attachment in attachments:
         try:
@@ -505,12 +560,22 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                 if po_details[0]["Doc Type"] != "COA" and po_details[0]["Doc Type"]!= "Certificate of Analysis":
                     count = get_exist_attachment(basic_detail[0]['DN#'], po_details[0]["Doc Type"])
                     if count > 0:
-                        error_msg = "There is already "+ po_details[0]["Doc Type"] +" documnet. Please check your attachment again."
-                        attatchment_error(basic_detail[0]['DN#'],error_msg, "error" ,emailID, -1, po_details[0]["Doc Type"])
-                        sheet_error = "The DN - "+basic_detail[0]['DN#']+" already has "+ po_details[0]["Doc Type"] +"document. Check it."
-                        new_log_sheet("Attachment Error",admin_email,sheet_error)
-                        print(f"There is already {po_details[0]["Doc Type"]} documnet. Please check your attachment again.")
-                        return
+                        duplicated = duplicate_document_detection(attachment, po_details[0]["Doc Type"], basic_detail[0]['DN#'])
+
+                        if duplicated==1:
+                            error_msg = "There is already "+ po_details[0]["Doc Type"] +" documnet. Ignored this document."
+                            attatchment_error(basic_detail[0]['DN#'],error_msg, "error" ,emailID, -1, po_details[0]["Doc Type"])
+                            sheet_error = "The DN - "+basic_detail[0]['DN#']+" already has "+ po_details[0]["Doc Type"] +"document. Ignored this document."
+                            new_log_sheet("Attachment Error",admin_email,sheet_error)
+                            insert_date_notification(basic_detail[0]['DN#'],'duplicated-document',emailID)
+                            socketio.emit("duplicated-document", {"DN#":basic_detail[0]['DN#'],"doc":po_details[0]["Doc Type"]})
+                            continue
+                        elif duplicated == -1:
+                            insert_date_notification(basic_detail[0]['DN#'],'new-same-document',emailID)
+                            socketio.emit("new-same-document", {"DN#":basic_detail[0]['DN#'],"doc":po_details[0]["Doc Type"]})
+                            # sheet_error = "The DN - "+basic_detail[0]['DN#']+" updated "+ po_details[0]["Doc Type"] +"document. Check it."
+                            # new_log_sheet("Attachment Error",admin_email,sheet_error)
+
                     if count == -1:
                         # attatchment_error(basic_detail[0]['DN#'],"Not found the exist DN# Number.", "error"  ,emailID)
                         print("Not found the exist DN Number.")
@@ -536,9 +601,11 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                         if exist_supplier == 0:
                             new_supplier_domain_and_name(SupplierDomain, po_details[0]["Supplier"])
                             supplier_name_intervention(emailID, SupplierDomain, po_details[0]["Supplier"],basic_detail[0]['DN#'])
+                            insert_date_notification(basic_detail[0]['DN#'],'supplier-name',emailID)
                             print("---------To User : Please check this vendor name and vendor domain.------------")
                         vendor_domain = SupplierDomain
                         vendor_name = po_details[0]["Supplier"]
+                
             if unique_docs_type >= 2:
                 unique_data = {item["Doc Type"]: item for item in po_details}.values()
                 # Convert back to a list if needed
@@ -554,7 +621,7 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                             attatchment_error(basic_detail[0]['DN#'],error_msg, "error"  ,emailID, -1, po_detail["Doc Type"])
                             sheet_error = "The DN - "+basic_detail[0]['DN#']+" already has "+ po_detail["Doc Type"] +"document. Check it."
                             new_log_sheet("Attachment Error",admin_email,sheet_error)
-                            print(f"There is already {po_detail["Doc Type"]} documnet. Please check your attachment again.")
+                            # print(f"There is already {po_detail["Doc Type"]} documnet. Please check your attachment again.")
                             return
                         if count == -1:
                             # attatchment_error(basic_detail[0]['DN#'],"Not found the exist DN# Number.", "error"  ,emailID)
@@ -579,6 +646,7 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                             if exist_supplier == 0:
                                 new_supplier_domain_and_name(SupplierDomain, po_detail["Supplier"])
                                 supplier_name_intervention(emailID, SupplierDomain, po_detail["Supplier"],basic_detail[0]['DN#'])
+                                insert_date_notification(basic_detail[0]['DN#'],'supplier-name',emailID)
                                 print("-----To User : Please check this vendor name and vendor domain.")
                             vendor_domain = SupplierDomain
                             vendor_name = po_detail["Supplier"]
@@ -586,7 +654,11 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                 file_name = os.path.basename(attachment)
                 document_name = file_name
                 multi_doc_intervention(emailID, vendor_domain, vendor_name, basic_detail[0]['DN#'], attachment_type, document_name)
+                insert_date_notification(basic_detail[0]['DN#'],'multi-doc',emailID)
                 doc_type_list.append(attachment_type)
+            file_name = os.path.basename(attachment)
+            document_name = file_name
+            document_name_list.append(document_name)
         except ValueError as e:
             print(f"Skipping unsupported attachment: {attachment} - {e}")
     
@@ -610,18 +682,75 @@ def analysis_email(subject, sender, body, attachments, emailID,admin_email,date)
                 file_data = f.read()
     #         # Upload the file to Google Drive
             
-            rename_date = datetime.now().strftime("%Y%m%d%H%M")
+            rename_date = datetime.now().strftime("%Y%m%d%H%M%S")
             if doc_type_list[index]=="DN" :
                 file_id = rename_and_upload_to_drive(supplier_domain, supplier_name, basic_detail[0]["DN#"], dn_po_number, doc_type_list[index], "", file_name, file_data, SERVICE_ACCOUNT_FILE, FOLDER_ID)
             else:
                 file_id = rename_and_upload_to_drive(supplier_domain, supplier_name, basic_detail[0]["DN#"], "", doc_type_list[index], rename_date, file_name, file_data, SERVICE_ACCOUNT_FILE, FOLDER_ID)
+            insert_attachment_state(basic_detail[0]['DN#'], doc_type_list[index], document_name_list[index], file_id)
             print(f"File uploaded with ID: {file_id}")
         except ValueError as e:
             print(f"Skipping unsupported attachment: {attachment} - {e}")
  
 # def google_drive_activity(supplier, basic_dn):
+def detect_date_format(date_str):
+    # Normalize all separators to '/'
+    if not date_str or date_str.strip().upper() in {"NONE", "NOT SPECIFIED", "NOT APPLICATED","N/A"}:
+        return ""
+    normalized = re.sub(r'[-.\s]', '/', date_str.strip().upper())
+
+    # Handle month name parsing
+    month_names = {
+        "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
+        "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
+        "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+        "JANUARY": 1, "FEBRUARY": 2, "MARCH": 3, "APRIL": 4,
+        "JUNE": 6, "JULY": 7, "AUGUST": 8,
+        "SEPTEMBER": 9, "OCTOBER": 10, "NOVEMBER": 11, "DECEMBER": 12
+    }
+
+    parts = normalized.split('/')
+
+    # If format is like MM/YYYY or contains only two parts
+    if len(parts) == 2:
+        m, y = parts
+        if (m in month_names) and y.isdigit():
+            return -2  # month name + year
+        if m.isdigit() and y.isdigit():
+            return -2  # numeric month + year
+        return -1  # Not identifiable
+
+    if len(parts) != 3:
+        return -1  # Invalid format
+
+    p1, p2, p3 = parts
+
+    # Case: one part is a month name
+    if p1.isdigit() and p2 in month_names:
+        return "ddmmyyyy"
+    if p2.isdigit() and p1 in month_names:
+        return "mmddyyyy"
+    if p1 in month_names and p2 in month_names:
+        return -1
+
+    # All numeric
+    try:
+        d1, d2, y = int(p1), int(p2), int(p3)
+        if d1 > 31 or d2 > 31 or y < 1000:
+            return -1
+        if d1 <= 12 and d2 <= 12:
+            return -1  # ambiguous
+        elif d1 > 12:
+            return "ddmmyyyy"
+        elif d2 > 12:
+            return "mmddyyyy"
+        else:
+            return -1
+    except:
+        return -1
     
-def google_drive_check_for_new_turn(supplier_domain,supplier_name, basic_dn):
+
+def google_drive_check_for_new_turn(id,supplier_domain,supplier_name, basic_dn):
     files = get_files_from_drive(supplier_domain, supplier_name, basic_dn)
     inv_data = []
     dn_data  = []
@@ -652,7 +781,7 @@ def google_drive_check_for_new_turn(supplier_domain,supplier_name, basic_dn):
                     if po_details[0]["Doc Type"] != "COA" and po_details[0]["Doc Type"]!= "Certificate of Analysis":
                         count = get_exist_attachment(basic_dn, po_details[0]["Doc Type"])
                         if count > 0:
-                            print(f"There are more than two {po_details[0]["Doc Type"]} documnets in your google drive. Please check your attachment again.")
+                            # print(f"There are more than two {po_details[0]["Doc Type"]} documnets in your google drive. Please check your attachment again.")
                             return
                         if count == -1:
                             print("Not found the exist DN Number.")
@@ -671,7 +800,7 @@ def google_drive_check_for_new_turn(supplier_domain,supplier_name, basic_dn):
                         if po_detail["Doc Type"] != "COA" and po_detail["Doc Type"]!= "Certificate of Analysis":
                             count = get_exist_attachment(basic_dn, po_detail["Doc Type"])
                             if count > 0:
-                                print(f"There are more than two {po_details[0]["Doc Type"]} documnets in your google drive. Please check your attachment again.")
+                                # print(f"There are more than two {po_details[0]["Doc Type"]} documnets in your google drive. Please check your attachment again.")
                                 return
                             if count == -1:
                                 print("Not found the exist DN Number.")
@@ -684,429 +813,192 @@ def google_drive_check_for_new_turn(supplier_domain,supplier_name, basic_dn):
         
         files_doc_type.append(result)
 
-    startOCR = start_ocr(basic_dn)
-    if startOCR == 1:
-        dn_attachment = ''
-        inv_attachment = ''
-        coa_attachment = ''
-        bol_attachment = ''
-        # print("*"*20)
-        # print(files_doc_type)
-        for index, file in enumerate(files):
-            filename = file["name"]  # Extract only the filename
-            attachment_path = os.path.join(supplier_domain, supplier_name, basic_dn, filename)
-            file_id = file["id"] 
-            if files_doc_type[index] == "DN":
-                download_file_from_drive(file_id, filename)
-                local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-                if os.path.exists(local_path):  # Ensure file exists before processing
-                    print(f"Processing file: {local_path}")
-                    # Now process the downloaded file
-                    extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-                    po_details = extract_document_field("output.txt", "output.json", 2, "")
-                    dn_data = po_details
-                    dn_attachment = attachment_path
-            
-            elif files_doc_type[index] == "INV":
-                download_file_from_drive(file_id, filename)
-                local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-                if os.path.exists(local_path):  # Ensure file exists before processing
-                    print(f"Processing file: {local_path}")
-                    # Now process the downloaded file
-                    extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-                    po_details = extract_document_field("output.txt", "output.json", 3, "")
-                    inv_data = po_details
-                    inv_attachment = attachment_path
-                    
-            elif files_doc_type[index] == "COA":
-                download_file_from_drive(file_id, filename)
-                local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-                if os.path.exists(local_path):  # Ensure file exists before processing
-                    print(f"Processing file: {local_path}")
-                    # Now process the downloaded file
-                    extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-                    po_details = extract_document_field("output.txt", "output.json", 4, "")
-                    coa_data.append(po_details)
-                    coa_attachment = attachment_path
-            
-            elif files_doc_type[index] == "Bill of Lading" or files_doc_type[index] == "Air Waybill":
-                download_file_from_drive(file_id, filename)
-                local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-                if os.path.exists(local_path):  # Ensure file exists before processing
-                    print(f"Processing file: {local_path}")
-                    # Now process the downloaded file
-                    extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-                    po_details = extract_document_field("output.txt", "output.json", 5, "")
-                    bill_of_lading = po_details
-                    bol_attachment = attachment_path
-            else:
-                download_file_from_drive(file_id, filename)
-                dn_attachment = attachment_path
-                inv_attachment = attachment_path
-                coa_attachment = attachment_path
-                bol_attachment = attachment_path
-                local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-                if os.path.exists(local_path):  # Ensure file exists before processing
-                    print(f"Processing file: {local_path}")
-                    # Now process the downloaded file
-                    extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-                    po_details = extract_document_field("output.txt", "output.json", 6 ,files_doc_type[index])
-                    for po_detail in po_details:
-                        if po_detail[0]['Doc Type'] == "DN":
-                            dn_data = po_detail
-                        elif po_detail[0]['Doc Type'] == "INV":
-                            inv_data = po_detail
-                        elif po_detail[0]['Doc Type'] == "COA":
-                            coa_data.append(po_detail)
-                        elif po_detail[0]['Doc Type'] == "Bill of Lading" or po_detail[0]['Doc Type'] == "Air Waybill":
-                            bill_of_lading.append(po_detail)
-        print("==="*20)
-        print(dn_data)
-        print(inv_data)
-        print(coa_data)
-        print(bill_of_lading)
-        print("==="*20)
-        
-        socketio.emit("ocr_finished", {"DN#":basic_dn})
-        insert_ocr_result(basic_dn,dn_data, inv_data, coa_data, bill_of_lading, dn_attachment,inv_attachment,coa_attachment,bol_attachment)
-        item_count = len(dn_data)
-        if len(inv_data) > item_count:
-            item_count = len(inv_data)
-        coa_item_count = len(coa_data)
-        set_item_count_for_attachments(basic_dn, item_count, coa_item_count)
-        
-        # df = pd.read_excel(file_path)
-
-        # filtered_df = df[df['Item Code'] == 'RBMENSYM VN2004']
-
-        # # Convert to JSON (orient='records' gives a list of dictionaries)
-        # json_output = filtered_df.to_json(orient='records', indent=2)
-
-        
-        
-        
-        set_complete_flag(basic_dn)
-        if item_count > coa_item_count:
-            print("There is not enough COA documents. Please check the attachments again.")
-            return
-        
-        match_data = []
-        for index,dn in enumerate(dn_data):
-            inv = {
-                "PO#" : "",
-                "Customer Part Code" : "",
-                "Packing Slip#" : "",
-                "Quantity" : "",
-                "Batch#" : "",
-                "Supplier Name" : "",
-                "Incoterm" : "",
-                "Item Description" :"",
-                "Invoice Number" : "",
-            }
-            if index < len(inv_data) :
-                inv = inv_data[index]
-            new_entry = {
-                "PO#" : dn["PO#"],
-                "Item Code" : dn["Customer Part Code"] or inv["Customer Part Code"],
-                "Packing Slip#" :  dn["Packing Slip#"] or inv["Packing Slip#"],
-                "Quantity" :  dn["Quantity"] or inv["Quantity"],
-                "Batch#" :  dn["Batch#"] or inv["Batch#"],
-                "Supplier Name" : supplier_name,
-                "Incoterm" :  dn["Incoterm"] or inv["Incoterm"],
-                "Item Description" : dn["Item Description"] or inv["Item Description"],
-                "Invoice Number" :  inv["Customer Part Code"],
-            }
-            match_data.append(new_entry)
-        print("-------------------------------")
-        print(match_data)
-        # match_data = [{'PO#': 'P01-006452', 'Item Code': 'RBMENSYM VN2004', 'Packing Slip#': '191419', 'Quantity': '5000', 'Batch#': '240239', 'Supplier Name': 'ZUELLIG PHARMA VIETNAM LTD', 'Incoterm': 'CIP', 'Item Description': 'SYMPAL 25MGX20 (VN)', 'Invoice Number': 'SYMPL 25MGX20 (VN)'}, {'PO#': 'P0O1-006792', 'Item Code': 'RBMENSYM VN2004', 'Packing Slip#': '191419', 'Quantity': '8080', 'Batch#': '240662', 'Supplier Name': 'ZUELLIG PHARMA VIETNAM LTD', 'Incoterm': 'CIP', 'Item Description': 'SYMPAL 25MGX20 (VN)', 'Invoice Number': 'SYMPL 25MGX20 (VN)'}]
-        ax09_data = []
-        unique_po_customer = list({(item["PO#"], item["Item Code"]) for item in match_data})
-     
-        # print("---------------------------AX09-----------------------------")
-        # for po, item_code in unique_po_customer:
-        #     df = pd.read_excel(file_path)
-        #     filtered_df = df[
-        #         (df['Item Code'] == item_code) & 
-        #         (df['PO Line Number'] == po)
-        #     ]
-        #     results = filtered_df.to_json(orient='records', indent=2)
-        #     print(results)
-        #     # for result in results:
-        #     ax09_data.append(results)
-
-        # print("---------------------------")
-        # print(ax09_data)
-    # for index, file in enumerate(files):
-    #     filename = file["name"]  # Extract only the filename
-    #     file_id = file["id"]
-        
-    #     if files_doc_type[index] == "DN":
-    #         download_file_from_drive(file_id, filename)
-    #         local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-    #         if os.path.exists(local_path):  # Ensure file exists before processing
-    #             print(f"Processing file: {local_path}")
-    #             # Now process the downloaded file
-    #             extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-    #             po_details = extract_field("output.txt", "output.json")
-    
-        # extract_text_with_positions_from_scanned_pdf(attachment,"output.txt")
-        # po_details = extract_document_field("output.txt", "output.json",4)
-    # Download the file first
-        # download_file_from_drive(file_id, filename)
-        # local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
-        # if os.path.exists(local_path):  # Ensure file exists before processing
-        #     print(f"Processing file: {local_path}")
-        #     # Now process the downloaded file
-        #     extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
-        #     po_details = extract_field("output.txt", "output.json")
-            
-    #         unique_docs_type = len(set(item["Doc Type"] for item in po_details))
-    #         if unique_docs_type == 1:
-    #             new_attachment(po_details[0]["Doc Type"], basic_dn)
-    #             if isinstance(po_details, str):  # If it's a string, convert it
-    #                 po_details = json.loads(po_details)
-
-    #             if po_details[0]["Doc Type"] == "DN":
-    #                 dn_data=po_details  
-    #             elif po_details[0]["Doc Type"] == "COA" or po_details[0]["Doc Type"] == "Certificate of Analysis":
-    #                 coa_data = po_details
-    #             elif po_details[0]["Doc Type"] == "INV":
-    #                 inv_data = po_details
-    #             elif po_details[0]["Doc Type"] == "Bill Of Lading" or po_details[0]["Doc Type"] == "BOL" or po_details[0]["Doc Type"] == "AWB" or po_details[0]["Doc Type"] == "Air Waybill":  # Ensure it matches your document type
-    #                 bill_of_lading = po_details  # Store as dictionary
-    #         else :
-    #             for po_detail in po_details:
-    #                 new_attachment(po_detail["Doc Type"], basic_dn)
-    #                 if isinstance(po_detail, str):  # If it's a string, convert it
-    #                     po_detail = json.loads(po_detail)
-    #                 if po_detail["Doc Type"] == "DN":
-    #                     dn_data.append(po_detail)  
-    #                 elif po_detail["Doc Type"] == "COA" or po_detail["Doc Type"] == "Certificate of Analysis":
-    #                     coa_data.append(po_detail)
-    #                 elif po_detail["Doc Type"] == "INV":
-    #                     inv_data.append(po_detail)
-    #                 elif po_detail["Doc Type"] == "Bill Of Lading" or po_detail["Doc Type"] == "BOL" or po_detail["Doc Type"] == "AWB" or po_detail["Doc Type"] == "Air Waybill":  # Ensure it matches your document type
-    #                     bill_of_lading.append(po_detail)
-    #     else:
-    #         print(f"File not found: {local_path}. Skipping processing.")
-
-    # if dn_data[0]["DN#"] != basic_dn:
-    #     return -1
     # startOCR = start_ocr(basic_dn)
     # if startOCR == 1:
-    #     analysis_data = []
-    #     new_dn_data = []
-    #     new_inv_data = []
+    dn_attachment = ''
+    inv_attachment = ''
+    coa_attachment = []
+    bol_attachment = ''
+    # print("*"*20)
+    # print(files_doc_type)
+    for index, file in enumerate(files):
+        filename = file["name"]  # Extract only the filename
+        attachment_path = os.path.join(supplier_domain, supplier_name, basic_dn, filename)
+        file_id = file["id"] 
         
-    #     unkown_dn_data = []
-    #     unkown_inv_data = []
-    #     unkown_dn_index = 0
-    #     unkown_inv_index = 0
+        if files_doc_type != "COA":
+            duplicated_result = duplicated_test(result, basic_dn)
+            if duplicated_result >= 2:
+                continue
+        if files_doc_type[index] == "DN":
+            download_file_from_drive(file_id, filename)
+            local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+            if os.path.exists(local_path):  # Ensure file exists before processing
+                print(f"Processing file: {local_path}")
+                # Now process the downloaded file
+                extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
+                po_details = extract_document_field("output.txt", "output.json", 2, "")
+                dn_ocr_data = extract_matching_values_with_positions(local_path,po_details,filename)
+                insert_into_ocr_table(dn_ocr_data,"DN",basic_dn)
+                dn_data = po_details
+                dn_attachment = attachment_path
         
-    #     basic_dn_data={
-    #         "PO#":"",
-    #         "Item Code":"",
-    #         "Packing Slip#":"",
-    #         "Quantity":"",
-    #         "Batch#":"",
-    #         "Incoterms":"",
-    #         "Supplier":"",
-    #         "Manufacturing Date":"",
-    #         "Expiry Date":"",
-    #         "Document Date":"",
-    #     }
-    #     basic_inv_data={
-    #         "PO#":"",
-    #         "Item Code":"",
-    #         "Packing Slip#":"",
-    #         "Quantity":"",
-    #         "Batch#":"",
-    #         "Incoterms":"",
-    #         "INV NO#":"",
-    #         "Manufacturing Date":"",
-    #         "Expiry Date":"",
-    #         "Document Date":"",
-    #         "Posting Date":""
-    #     }
-    #     for dn in dn_data:
-    #         if dn.get("PO#") and dn.get("PO#")!="null":
-    #             normalized_po = dn["PO#"].replace("P0", "PO").replace("P0O", "PO").replace("PO0", "PO").replace("POO", "PO").replace("P00", "PO")  
-    #             dn["PO#"] = normalized_po
-    #         else:
-    #             unkown_dn_data.append(dn)
-    #     for inv in inv_data:
-    #         if inv.get("PO#") and inv.get("PO#")!="null":
-    #             normalized_po = inv["PO#"].replace("P0", "PO").replace("P0O", "PO").replace("PO0", "PO").replace("POO", "PO").replace("P00", "PO")  
-    #             inv["PO#"] = normalized_po
-    #         else:
-    #             unkown_inv_data.append(inv) 
+        elif files_doc_type[index] == "INV":
+            download_file_from_drive(file_id, filename)
+            local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+            if os.path.exists(local_path):  # Ensure file exists before processing
+                print(f"Processing file: {local_path}")
+                # Now process the downloaded file
+                extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
+                po_details = extract_document_field("output.txt", "output.json", 3, "")
+                inv_ocr_data = extract_matching_values_with_positions(local_path,po_details,filename)
+                insert_into_ocr_table(inv_ocr_data,"INV",basic_dn)
+                inv_data = po_details
+                inv_attachment = attachment_path
                 
-    #     if inv_data!=[] and dn_data!=[]:
-    #         for dn in dn_data:
-    #             if dn.get("PO#") and dn.get("PO#")!="null":
-    #                 filtered_data = [inv for inv in inv_data if inv["PO#"] == dn["PO#"]]
-    #                 inv = json.dumps(filtered_data[0], indent=4)
-    #                 print("1111111111111111111111111111111111111111111111")
-    #                 if len(filtered_data) == 0:
-    #                     if unkown_inv_index >= len(unkown_inv_data):
-    #                         inv = basic_inv_data
-    #                     else:
-    #                         inv = unkown_inv_data[unkown_inv_index]
-    #                         unkown_inv_index = unkown_inv_index + 1
-    #                 else:
-    #                     inv = filtered_data[0]
-    #                 print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    #                 new_entry = {
-    #                     "PO#": dn.get("PO#"),
-    #                     "Item Code": dn.get("Item Code") or inv.get("Item Code"),
-    #                     "Packing Slip#": dn.get("Packing Slip#") or inv.get("Packing Slip#"),
-    #                     "Quantity": dn.get("Quantity") or inv.get("Quantity"),
-    #                     "Batch#": dn.get("Batch#") or inv.get("Batch#"),
-    #                     "INV NO#": inv.get("INV NO#"),
-    #                     "Incoterms": dn.get("Incoterms") or inv.get("Incoterms") or (bill_of_lading[0]["Incoterms"] if bill_of_lading and len(bill_of_lading) > 0 else None),
-    #                     "Supplier": dn.get("Supplier"),
-    #                     "Manufacturing Date": dn.get("Manufacturing Date") or inv.get("Manufacturing Date") or (coa_data[0]["Manufacturing Date"] if coa_data and len(coa_data) > 0 else None),
-    #                     "Expiry Date": dn.get("Expiry Date") or inv.get("Expiry Date") or (coa_data[0]["Expiry Date"] if coa_data and len(coa_data) > 0 else None),
-    #                     "Document Date": dn.get("Document Date") or inv.get("Document Date"),
-    #                     "Posting Date": inv.get("Posting Date") or (bill_of_lading[0]["Posting Date"] if bill_of_lading and len(bill_of_lading) > 0 else None),
-    #                 }
+        elif files_doc_type[index] == "COA":
+            download_file_from_drive(file_id, filename)
+            local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+            if os.path.exists(local_path):  # Ensure file exists before processing
+                print(f"Processing file: {local_path}")
+                # Now process the downloaded file
+                extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
+                po_details = extract_document_field("output.txt", "output.json", 4, "")
+                coa_ocr_data = extract_matching_values_with_positions(local_path,po_details,filename)
+                insert_into_ocr_table(coa_ocr_data,"COA",basic_dn)
+                coa_data.append(po_details)
+                coa_attachment.append(attachment_path)
+        
+        elif files_doc_type[index] == "Bill of Lading" or files_doc_type[index] == "Air Waybill":
+            download_file_from_drive(file_id, filename)
+            local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+            if os.path.exists(local_path):  # Ensure file exists before processing
+                print(f"Processing file: {local_path}")
+                # Now process the downloaded file
+                extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
+                po_details = extract_document_field("output.txt", "output.json", 5, "")
+                bol_ocr_data = extract_matching_values_with_positions(local_path,po_details,filename)
+                insert_into_ocr_table(bol_ocr_data,"BOL",basic_dn)
+                bill_of_lading = po_details
+                bol_attachment = attachment_path
+        else:
+            download_file_from_drive(file_id, filename)
+            dn_attachment = attachment_path
+            inv_attachment = attachment_path
+            coa_attachment = attachment_path
+            bol_attachment = attachment_path
+            local_path = os.path.join(DOWNLOAD_FOLDER, sanitize_filename(filename))
+            if os.path.exists(local_path):  # Ensure file exists before processing
+                print(f"Processing file: {local_path}")
+                # Now process the downloaded file
+                extract_text_with_positions_from_scanned_pdf(local_path, "output.txt")
+                po_details = extract_document_field("output.txt", "output.json", 6 ,files_doc_type[index])
+                for po_detail in po_details:
+                    if po_detail[0]['Doc Type'] == "DN":
+                        dn_data = po_detail
+                    elif po_detail[0]['Doc Type'] == "INV":
+                        inv_data = po_detail
+                    elif po_detail[0]['Doc Type'] == "COA":
+                        coa_data.append(po_detail)
+                    elif po_detail[0]['Doc Type'] == "Bill of Lading" or po_detail[0]['Doc Type'] == "Air Waybill":
+                        bill_of_lading.append(po_detail)
+                    ocr_data = extract_matching_values_with_positions(local_path,po_detail,filename)
+                    insert_into_ocr_table(ocr_data,po_detail[0]['Doc Type'],basic_dn)
+                    
+    print("==="*20)
+    print(dn_data)
+    print(inv_data)
+    print(coa_data)
+    print(bill_of_lading)
+    print("==="*20)
+    
+    # socketio.emit("ocr_finished", {"DN#":basic_dn})
+    unique_batches = {item["Batch#"] for item in dn_data}
+    unique_PO = {item["PO#"] for item in dn_data}
+    unique_count = len(unique_batches)
 
-    #                 analysis_data.append(new_entry)
-    #                 new_dn_data.append(dn)
-    #                 new_inv_data.append(inv)
-    #         # print("::::::::::::::::::::::::::::::::::::::::::::::::")
-    #         # print(analysis_data)
-    #         for inv in inv_data:
-    #             if inv.get("PO#") and inv.get("PO#")!="null":
-    #                 filtered_data = [dn for dn in dn_data if dn["PO#"] == inv["PO#"]]
-    #                 if len(filtered_data) == 0:
-    #                     if unkown_dn_index >= len(unkown_dn_data):
-    #                         dn = basic_dn_data
-    #                     else:
-    #                         dn = unkown_dn_data[unkown_dn_index]
-    #                         unkown_dn_index = unkown_dn_index + 1
-    #                         new_entry = {
-    #                             "PO#": dn.get("PO#"),
-    #                             "Item Code": dn.get("Item Code") or inv.get("Item Code"),
-    #                             "Packing Slip#": dn.get("Packing Slip#") or inv.get("Packing Slip#"),
-    #                             "Quantity": dn.get("Quantity") or inv.get("Quantity"),
-    #                             "Batch#": dn.get("Batch#") or inv.get("Batch#"),
-    #                             "INV NO#": inv.get("INV NO#"),
-    #                             "Incoterms": dn.get("Incoterms") or inv.get("Incoterms") or (bill_of_lading[0]["Incoterms"] if bill_of_lading and len(bill_of_lading) > 0 else None),
-    #                             "Supplier": dn.get("Supplier"),
-    #                             "Manufacturing Date": dn.get("Manufacturing Date") or inv.get("Manufacturing Date") or (coa_data[0]["Manufacturing Date"] if coa_data and len(coa_data) > 0 else None),
-    #                             "Expiry Date": dn.get("Expiry Date") or inv.get("Expiry Date") or (coa_data[0]["Expiry Date"] if coa_data and len(coa_data) > 0 else None),
-    #                             "Document Date": dn.get("Document Date") or inv.get("Document Date"),
-    #                             "Posting Date": inv.get("Posting Date") or (bill_of_lading[0]["Posting Date"] if bill_of_lading and len(bill_of_lading) > 0 else None),
-    #                         }
-    #                     analysis_data.append(new_entry)
-    #                     new_dn_data.append(dn)
-    #                     new_inv_data.append(inv)
-    #         print("::::::::::::::::::::::::::::::::::::::::::::::::")
-            
-    #         export_unique_to_csv(analysis_data)    
-    
-    
-    
-    
-    
-    
-    
-    
-            # print(analysis_data)
-    # doc_type_list=[]
-    # inv_data = []
-    # dn_data  = []
-    # coa_data = []
-    # bill_of_lading  = []
-    # for attachment in attachments:
-    #     try:
-    #         extract_text_with_positions_from_scanned_pdf(attachment,"output.txt")
-    #         po_details = extract_field("output.txt", "output.json")
-    #         # Ensure po_details is always a dictionary
-    #         if isinstance(po_details, str):  # If it's a string, convert it
-    #             po_details = json.loads(po_details)
+    item_count = unique_count
+    set_item_count_for_attachments(basic_dn, item_count)
 
-    #         if po_details[0]["Doc Type"] == "DN":
-    #             dn_data=po_details  
-    #         elif po_details[0]["Doc Type"] == "COA":
-    #             coa_data = po_details
-    #         elif po_details[0]["Doc Type"] == "INV":
-    #             inv_data = po_details
-    #         elif po_details[0]["Doc Type"] == "Bill Of Lading":  # Ensure it matches your document type
-    #             bill_of_lading = po_details  # Store as dictionary
+    insert_ocr_result(basic_dn,dn_data, inv_data, coa_data, bill_of_lading, dn_attachment,inv_attachment,coa_attachment,bol_attachment)
+    
+    # insert_ocr_table(basic_dn,dn_data, inv_data, coa_data, bill_of_lading, dn_attachment,inv_attachment,coa_attachment,bol_attachment)
+    print("----------!!!!!!!!!!!!!!!!!!------")
+    startOCR = start_ocr(basic_dn)
+    incoterm = ""
+    if startOCR == 1:
+        date_list = []
+        for data in dn_data:
+            data = flatten_data(data)
+            if data.get("Manufacturing Date"):
+                date_list.append(data["Manufacturing Date"])
+            if data.get("Expiry Date"):
+                date_list.append(data["Expiry Date"])
+            if data.get("Document Date"):
+                date_list.append(data["Document Date"])
+            if incoterm == "":
+                incoterm = data.get("Incoterm", "")
 
-    #     except ValueError as e:
-    #         print(f"Skipping unsupported attachment: {attachment} - {e}")
-    #     except json.JSONDecodeError as e:
-    #         print(f"Error decoding JSON from output.json: {e}")
-    # print("-------------------------")
-    # print(dn_data)
-    # print("-------------------------")
-    # print(inv_data)
-    # inv_lookup = {}
-    # for item in inv_data:
-    #     po_key = item["PO#"]
-    #     if po_key not in inv_lookup:
-    #         inv_lookup[po_key] = []
-    #     inv_lookup[po_key].append(item)
+        for data in inv_data:
+            data = flatten_data(data)
+            if data.get("Manufacturing Date"):
+                date_list.append(data["Manufacturing Date"])
+            if data.get("Expiry Date"):
+                date_list.append(data["Expiry Date"])
+            if data.get("Document Date"):
+                date_list.append(data["Document Date"])
+            if incoterm == "":
+                incoterm = data.get("Incoterm", "")
+        print("-------inv_-------!_-----------")
+        for coa_group in coa_data:
+            try:
+                for data in coa_group:  # COA data is a list of lists
+                    data = flatten_data(data)
+                    if data.get("Manufacturing Date"):
+                        date_list.append(data["Manufacturing Date"])
+                    if data.get("Expiry Date"):
+                        date_list.append(data["Expiry Date"])
+            except Exception as e:
+                print(f"Error processing COA data: {e}")
+                continue
 
-    # analysis_output = []
-    # for dn in dn_data:
-    #     normalized_po = dn["PO#"].replace("P0", "PO")  # Normalize PO format
-    #     inv_matches = inv_lookup.get(normalized_po, [])
+        for data in bill_of_lading:
+            data = flatten_data(data)
+            if incoterm == "":
+                incoterm = data.get("Incoterm", "")
+            if data.get("Posting Date"):
+                date_list.append(data["Posting Date"])
+        date_format = -1
+        print("----------------------")
+        print(date_list)
+        for date in date_list:
+            date_format = detect_date_format(date)
+            if date_format == "ddmmyyyy" or date_format == "mmddyyyy":
+                break
 
-    #     if inv_matches:
-    #         for inv in inv_matches:
-    #             new_entry = {
-    #                 "DN#": dn.get("DN#"),
-    #                 "PO#": dn.get("PO#"),
-    #                 "Supplier Item Code": dn.get("Supplier Item Code") or inv.get("Supplier Item Code"),
-    #                 "Menarini Item Code": dn.get("Menarini Item Code"),
-    #                 "Quantity": f"{inv.get('Quantity', '0')} UNIT",
-    #                 "Batch#": inv.get("Batch#"),
-    #                 "INV NO#": inv.get("INV NO#"),
-    #                 "Incoterms": inv.get("Incoterms"),
-    #                 "Date of loading": bill_of_lading[0]["Date of loading"] if bill_of_lading else None,
-    #                 "Executed on": bill_of_lading[0]["Executed on"] if bill_of_lading else None,
-    #                 "Manufacturing Date": coa_data[0]["Manufacturing Date"] if coa_data else None,
-    #                 "Expiry Date": coa_data[0]["Expiry Date"] if coa_data else None,
-    #                 "Document Date": dn.get("Document Date"),
-    #                 "PO LINE#": dn.get("PO LINE#") if inv.get("PO LINE#") == 'null' else inv.get("PO LINE#"),  # Use DN PO LINE# if INV PO LINE# is 'null'
-    #                 "Packing Slip#": dn.get("Packing Slip#"),
-    #                 "AX ENTITY": dn.get("AX ENTITY"),
-    #                 "VENDOR NAME": dn.get("VENDOR NAME"),
-    #                 "VENDOR CODE": dn.get("VENDOR CODE")
-    #             }
-    #             analysis_output.append(new_entry)
-    
-    # print(json.dumps(analysis_output, indent=4))
-    
-    
-    
-    
-    
-    # idx = 0
-    # rename_date = ""
-    # if email_analysis_data["Document Date"] == "" or email_analysis_data["Document Date"] == "null" or email_analysis_data["Document Date"] == None:
-    #     rename_date = datetime.now().strftime("%Y%m%d%H%M")
-    #     email_analysis_data["Document Date"] = datetime.now().strftime("%m-%d-%Y")
+        print(date_format)
+        print(incoterm)
 
+        if date_format == -1:
+            insert_date_notification(basic_dn,"date-format","")
+            socketio.emit("no_date_format", {"DN#":basic_dn})
 
-    # check_email_data(email_analysis_data,emailID,subject)
+        else:
+            set_date_format_for_dn(basic_dn,date_format)
+
+        if incoterm == "" or incoterm == "null" or not incoterm:
+            insert_date_notification(basic_dn,"incoterms","")
+            socketio.emit("no_exact_incoterms", {"DN#":basic_dn})
+        else:
+            set_incoterms_for_dn(basic_dn,incoterm)
+        set_complete_flag(basic_dn)
+    remove_google_drive_change(id)
+    # df = pd.read_excel(file_path)
+
+    # filtered_df = df[df['Item Code'] == 'RBMENSYM VN2004']
+
+    # # Convert to JSON (orient='records' gives a list of dictionaries)
+    # json_output = filtered_df.to_json(orient='records', indent=2)
+
     
-    # for attachment in attachments:
-        # print("-----------")
-        # doc_type = doc_type_list[idx] if idx < len(doc_type_list) else None
-        # file_name = os.path.basename(attachment)
-        # with open(attachment, 'rb') as f:
-        #     file_data = f.read()
-        # # Upload the file to Google Drive
-        # file_id = rename_and_upload_to_drive("PHAR", email_analysis_data["DN#"], email_analysis_data["PO#"], doc_type, rename_date, file_name, file_data, SERVICE_ACCOUNT_FILE, FOLDER_ID)
-        # print(f"File uploaded with ID: {file_id}")
-        # print(email_analysis_data)
-        # idx = idx + 1
-
-    # return 0
-   
+    

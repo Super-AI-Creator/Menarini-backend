@@ -80,7 +80,10 @@ def get_email_data_with_role(role,email):
 def get_all_email(email):
   conn = get_db_connection()
   cursor = conn.cursor()
-  cursor.execute("SELECT `role` FROM admin_table WHERE email = %s", (email,))
+  cursor.execute("SELECT `admin_email` FROM user WHERE email = %s", (email,))
+  emails = cursor.fetchone()
+  admin_email = emails[0]
+  cursor.execute("SELECT `role` FROM admin_table WHERE email = %s", (admin_email,))
   result = cursor.fetchone()
   if result:
     if result[0] == 1 or result[0] == '1':
@@ -398,15 +401,19 @@ def get_all_data(email):
   conn = get_db_connection()
   cursor = conn.cursor()
   
-  cursor.execute("SELECT `role` FROM admin_table WHERE email = %s", (email,))
+  cursor.execute("SELECT `admin_email` FROM user WHERE email = %s", (email,))
+  emails = cursor.fetchone()
+  admin_email = emails[0]
+
+  cursor.execute("SELECT `role` FROM admin_table WHERE email = %s", (admin_email,))
   result = cursor.fetchone()
   final = []
   if result:
     if result[0] == 1 or result[0] == '1':
-      cursor.execute("SELECT `id`,`log`,`email`,`color`,`date`,`detail` FROM logsheet")
+      cursor.execute("SELECT `id`,`log`,`email`,`color`,`date`,`detail` FROM logsheet ORDER BY `id` DESC")
       final = cursor.fetchall()
     else:
-      cursor.execute("SELECT `id`,`log`,`email`,`color`,`date`,`detail` FROM logsheet WHERE `email`=%s",(email,))
+      cursor.execute("SELECT `id`,`log`,`email`,`color`,`date`,`detail` FROM logsheet WHERE `email`=%s ORDER BY `id` DESC",(email,))
       final = cursor.fetchall()
   
   final_data = []
@@ -550,3 +557,98 @@ def get_supplier_id_with_vendor_name(domain,name):
   conn.close()
   
   return supplier_id
+
+
+def get_all_notification(email):
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  
+  cursor.execute("SELECT `admin_email` FROM user WHERE email = %s", (email,))
+  emails = cursor.fetchone()
+  admin_email = emails[0]
+
+  cursor.execute("SELECT `role` FROM admin_table WHERE email = %s", (admin_email,))
+  result = cursor.fetchone()
+  final = []
+  role = 1
+  if result:
+    if result[0] == 1 or result[0] == '1':
+      role = 1
+    else:
+      role = 2
+  cursor.execute("SELECT `id`,`header`,`message`,`key`,`type`,`date` FROM notification_table ORDER BY `id` DESC")
+  final = cursor.fetchall()
+  final_data = []
+  print(final)
+  if final:
+    for data in final:
+      if role == 2:
+        if data[4] == 'date-format' or data[4] == "incoterms":
+          query = """SELECT `id` FROM attachment_table WHERE admin_email=%s AND `DN#`=%s"""
+          cursor.execute(query,(email,data[3], ))
+          result = cursor.fetchone()
+          if result:
+            entry = {
+              "_id":data[0],
+              "id":data[3],
+              'type':data[4],
+              'header':data[1],
+              'color':'error',
+              'message':data[2],
+              'date':data[5],
+            }
+        else:
+          query = """SELECT `id` FROM email_check WHERE admin_email=%s AND `email_id`=%s"""
+          cursor.execute(query,(email,data[3], ))
+          result = cursor.fetchone()
+          if result:
+            entry = {
+              "_id":data[0],
+              "id":data[3],
+              'type':data[4],
+              'header':data[1],
+              'color':'warning',
+              'message':data[2],
+              'date':data[5],
+            }
+        final_data.append(entry)
+      else:
+        if data[4] == 'date-format' or data[4] == "incoterms":
+          entry = {
+            "_id":data[0],
+            "id":data[3],
+            'type':data[4],
+            'header':data[1],
+            'color':'error',
+            'message':data[2],
+            'date':data[5],
+          }
+        else:
+          entry = {
+            "_id":data[0],
+            "id":data[3],
+            'type':data[4],
+            'header':data[1],
+            'color':'warning',
+            'message':data[2],
+            'date':data[5],
+          }
+        final_data.append(entry)
+  print(final_data)
+  return final_data
+
+def update_notification(dn,type,incoterm,dateFormat):
+  print(dn)
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  if type == "incoterms":
+    query = """UPDATE `attachment_table` SET `incoterms` = %s WHERE `DN#` = %s"""  
+    cursor.execute(query, (incoterm, dn, ))
+  else:
+    query = """UPDATE `attachment_table` SET `date_format` = %s WHERE `DN#` = %s"""  
+    cursor.execute(query, (dateFormat, dn, ))
+  conn.commit()
+  cursor.close()
+  conn.close()
+  return []
+  

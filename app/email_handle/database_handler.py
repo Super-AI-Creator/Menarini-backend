@@ -425,7 +425,7 @@ def get_supplier_from_logo(logo):
             
             
 
-def set_item_count_for_attachments(DN, item_count, coa_item_count):
+def set_item_count_for_attachments(DN, item_count):
         
     try:
         connection = mysql.connector.connect(
@@ -435,8 +435,8 @@ def set_item_count_for_attachments(DN, item_count, coa_item_count):
             database=database_name
         )
         cursor = connection.cursor()
-        update_query = """UPDATE attachment_table SET `Item Count` = %s, `COA Count` = %s  WHERE `DN#` = %s;""" 
-        cursor.execute(update_query, (item_count,coa_item_count,DN,))
+        update_query = """UPDATE attachment_table SET `Item Count` = %s WHERE `DN#` = %s;""" 
+        cursor.execute(update_query, (item_count,DN,))
         connection.commit() 
         
         # print(result)
@@ -452,7 +452,33 @@ def set_item_count_for_attachments(DN, item_count, coa_item_count):
             connection.close()
             print("MySQL connection closed.")
             
-            
+   
+def set_coa_count_for_attachments(DN, coa_count):
+        
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        update_query = """UPDATE attachment_table SET `COA Count` = %s WHERE `DN#` = %s;""" 
+        cursor.execute(update_query, (coa_count,DN,))
+        connection.commit() 
+        
+        # print(result)
+        return
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")         
 def set_complete_flag(DN):
     try:
         connection = mysql.connector.connect(
@@ -706,7 +732,8 @@ def get_all_admin_info():
             connection.close()
             print("MySQL connection closed.")
             
-
+def normalize_keys(d):
+    return {k.strip().strip(':'): v for k, v in d.items()}
 def flatten_data(data):
     """
     Flattens the data if it's a 2-level array.
@@ -718,104 +745,189 @@ def flatten_data(data):
         else:  # 1-level array
             return data[0]  # Access the first item of the 1-level array
     return data
-
-def insert_ocr_result(dn, dn_data, inv_data, coa_data, bill_of_lading,dn_attachment,inv_attachment,coa_attachment,bol_attachment):
+def insert_ocr_result(dn, dn_data, inv_data, coa_data, bill_of_lading, dn_attachment, inv_attachment, coa_attachment, bol_attachment):
     connection = mysql.connector.connect(
         host=database_host,
         user=database_user,
-        password=database_password,  # No password as per your setup
+        password=database_password,
         database=database_name
     )
     cursor = connection.cursor()
 
     # Insert into dn_table
     if dn_data:
-        for data in dn_data:
-            data = flatten_data(data)  # Flatten the data if it's in a 2-level array
-            query = """
-                INSERT INTO dn_table 
-                (`DN#`, `PO#`, `Vendor Part Code`, `Customer Part Code`, `GIC Code`, `Packing Slip#`, `Quantity`, `Batch#`, `Manufacturing Date`, `Expiry Date`, `Document Date`, `Incoterms`, `Item Description`,`Document`) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (
-                dn,
-                data.get('PO#'),
-                data.get('Vendor Part Code'),
-                data.get('Customer Part Code'),
-                data.get('GIC Code'),
-                data.get('Packing Slip#'),
-                data.get('Quantity'),
-                data.get('Batch#'),
-                data.get('Manufacturing Date'),
-                data.get('Expiry Date'),
-                data.get('Document Date'),
-                data.get('Incoterm'),
-                data.get('Item Description'),
-                dn_attachment,
-            ))
+        
+        query = """SELECT `Item Count` FROM attachment_table WHERE `DN#` = %s"""
+        cursor.execute(query,(dn,))
+        item_count = cursor.fetchone()
+        
+        query = """SELECT `id` FROM dn_table WHERE `DN#` = %s"""
+        cursor.execute(query,(dn,))
+        result = cursor.fetchall()
+        
+        flag = 0
+        if item_count:
+            if len(result) >= item_count[0]:
+                flag = 1
+        if flag == 0:
+            for data in dn_data:
+                data = flatten_data(data)
+                
+                query = """SELECT `id` FROM dn_table WHERE `DN#`=%s and `PO#`=%s and `Batch#`=%s"""
+                cursor.execute(query, (dn, data.get('PO#'), data.get('Batch#')))
+                if not cursor.fetchall():
+                    query = """
+                        INSERT INTO dn_table 
+                        (`DN#`, `PO#`, `Item Code`, `Packing Slip#`, `Quantity`, `Batch#`, 
+                        `Manufacturing Date`, `Expiry Date`, `Document Date`, `Incoterms`, `Item Description`, `Document`) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (
+                        dn,
+                        data.get('PO#'),
+                        data.get('Item Code'),
+                        data.get('Packing Slip#'),
+                        data.get('Quantity'),
+                        data.get('Batch#'),
+                        data.get('Manufacturing Date'),
+                        data.get('Expiry Date'),
+                        data.get('Document Date'),
+                        data.get('Incoterm'),
+                        data.get('Item Description'),
+                        dn_attachment,
+                    ))
 
     # Insert into inv_table
     if inv_data:
-        for data in inv_data:
-            data = flatten_data(data)  # Flatten the data if it's in a 2-level array
-            query = """
-                INSERT INTO inv_table 
-                (`DN#`, `PO#`, `Vendor Part Code`, `Packing Slip#`, `Quantity`, `Batch#`, `Manufacturing Date`, `Customer Part Code`, `GIC Code`, `Expiry Date`, `Document Date`, `INV NO#`, `Incoterms`, `Item Description`, `Document`)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            cursor.execute(query, (
-                dn,
-                data.get('PO#'),
-                data.get('Vendor Part Code'),
-                data.get('Packing Slip#'),
-                data.get('Quantity'),
-                data.get('Batch#'),
-                data.get('Manufacturing Date'),
-                data.get('Customer Part Code'),
-                data.get('GIC Code'),
-                data.get('Expiry Date'),
-                data.get('Document Date'),
-                data.get('Invoice Number'),
-                data.get('Incoterm'),
-                data.get('Item Description'),
-                inv_attachment,
-            ))
+        
+        query = """SELECT `Item Count` FROM attachment_table WHERE `DN#` = %s"""
+        cursor.execute(query,(dn,))
+        item_count = cursor.fetchone()
+        
+        query = """SELECT `id` FROM inv_table WHERE `DN#` = %s"""
+        cursor.execute(query,(dn,))
+        result = cursor.fetchall()
+        
+        flag = 0
+        if item_count:
+            if len(result) >= item_count[0]:
+                flag = 1
+        if flag == 0:
+            for data in inv_data:
+                data = flatten_data(data)
+                query = """SELECT `id` FROM inv_table WHERE `DN#`=%s and `PO#`=%s and `Batch#`=%s and `INV NO#`=%s"""
+                cursor.execute(query, (dn, data.get('PO#'), data.get('Batch#'), data.get('Invoice Number')))
+                if not cursor.fetchall():
+                    query = """
+                        INSERT INTO inv_table 
+                        (`DN#`, `PO#`, `Packing Slip#`, `Quantity`, `Batch#`, `Manufacturing Date`, 
+                        `Item Code`, `Expiry Date`, `Document Date`, `INV NO#`, `Incoterms`, `Item Description`, `Document`)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (
+                        dn,
+                        data.get('PO#'),
+                        data.get('Packing Slip#'),
+                        data.get('Quantity'),
+                        data.get('Batch#'),
+                        data.get('Manufacturing Date'),
+                        data.get('Item Code'),
+                        data.get('Expiry Date'),
+                        data.get('Document Date'),
+                        data.get('Invoice Number'),
+                        data.get('Incoterm'),
+                        data.get('Item Description'),
+                        inv_attachment,
+                    ))
 
-    # Insert into coa_table
+    # Insert into coa_table - fixed to handle nested structure
     if coa_data:
-        for data in coa_data:
-            data = flatten_data(data)  # Flatten the data if it's in a 2-level array
+        different_coa = []
+        for coa_group in coa_data:  # coa_data is a list of lists
+            for data in coa_group:  # each group contains multiple COA entries
+                data = normalize_keys(flatten_data(data))
+                
+                # Handle missing Manufacturing Date
+                mfg_date = data.get('Manufacturing Date')
+                batch = data.get('Batch#')
+                expiry_date = data.get('Expiry Date')
+                
+                query = """SELECT `id` FROM coa_table WHERE `DN#`=%s AND `Batch#`=%s AND `Manufacturing Date`=%s AND 'Expiry Date'=%s"""
+                cursor.execute(query, (dn, batch,mfg_date,expiry_date,))
+                if not cursor.fetchall():
+                    different_coa.append({
+                        'Batch#': data.get('Batch#'),
+                        'Item Description': data.get('Item Description'),
+                        'Manufacturing Date': mfg_date,
+                        'Expiry Date': expiry_date
+                    })
+
+        # Get current counts
+        query = """SELECT `Item Count`, `COA Count` FROM attachment_table WHERE `DN#`=%s"""
+        cursor.execute(query, (dn,))
+        result = cursor.fetchone()
+        item_count = result[0] if result else 0
+        coa_count = result[1] if result else 0
+
+        # Insert new COAs if needed
+        flag = 1
+        for (index,data) in enumerate(different_coa):
+            if item_count > coa_count:
+                flag = 1
+            else:
+                flag = 0
             query = """
                 INSERT INTO coa_table 
-                (`DN#`, `Vendor Part Code`, `Customer Part Code`, `GIC Code`, `Item Description`, `Manufacturing Date`, `Expiry Date`,`Document`)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (`DN#`, `Item Description`, `Manufacturing Date`, `Expiry Date`, `Document`,`Batch#`,`flag`)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             cursor.execute(query, (
                 dn,
-                data.get('Vendor Part Code'),
-                data.get('Customer Part Code'),
-                data.get('GIC Code'),
-                data.get('Item Description'),
-                data.get('Manufacturing Date'),
-                data.get('Expiry Date'),
-                coa_attachment,
+                data['Item Description'],
+                data['Manufacturing Date'],
+                data['Expiry Date'],
+                coa_attachment[index],
+                data['Batch#'],
+                flag
             ))
+            coa_count += 1
+
+        # Update COA count
+        if different_coa:
+            set_coa_count_for_attachments(dn, coa_count)
 
     # Insert into bol_table
     if bill_of_lading:
-        data = flatten_data(bill_of_lading)  # Flatten the data if it's in a 2-level array
-        query = """
-            INSERT INTO bol_table 
-            (`DN#`, `Incoterms`, `Posting Date`,`Document`)
-            VALUES (%s, %s, %s, %s)
-        """
-        cursor.execute(query, (
-            dn,
-            data.get('Incoterm'),
-            data.get('Posting Date'),
-            bol_attachment,
-        ))
+        data = flatten_data(bill_of_lading)
+        query = """SELECT `id` FROM bol_table WHERE `DN#`=%s"""
+        cursor.execute(query, (dn,))
+        if not cursor.fetchall():
+            query = """
+                INSERT INTO bol_table 
+                (`DN#`, `Incoterms`, `Posting Date`, `Document`)
+                VALUES (%s, %s, %s, %s)
+            """
+            cursor.execute(query, (
+                dn,
+                data.get('Incoterm'),
+                data.get('Posting Date'),
+                bol_attachment,
+            ))
 
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+def set_coa_count_for_attachments(dn, count):
+    connection = mysql.connector.connect(
+        host=database_host,
+        user=database_user,
+        password=database_password,
+        database=database_name
+    )
+    cursor = connection.cursor()
+    query = """UPDATE attachment_table SET `COA Count`=%s WHERE `DN#`=%s"""
+    cursor.execute(query, (count, dn))
     connection.commit()
     cursor.close()
     connection.close()
@@ -871,6 +983,363 @@ def logo_check(emailID,logo_id, logo_img, dn):
             cursor.execute(query, (emailID, logo_id, logo_img, dn,))
             connection.commit()
         return
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def insert_google_drive_change(supplier_domain,supplier_name,dn):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        query = """INSERT INTO google_drive_change (`supplier_domain`,`supplier_name`,`dn`) VALUES (%s,%s,%s)"""  
+        cursor.execute(query, (supplier_domain,supplier_name,dn,))
+        connection.commit()
+        return
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def get_google_drive_change():
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        query = """SELECT `supplier_domain`,`supplier_name`,`dn`,`id` FROM google_drive_change"""  
+        cursor.execute(query, ())
+        results = cursor.fetchall()
+        final_result = []
+        if results:
+            for result in results:
+                entry = {
+                    "supplier_domain":result[0],
+                    "supplier_name":result[1],
+                    "dn":result[2],
+                    "id":result[3]
+                }
+                final_result.append(entry)
+        return final_result
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def remove_google_drive_change(id):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        query = """DELETE FROM google_drive_change WHERE `id` = %s"""  
+        cursor.execute(query, (id,))
+        connection.commit() 
+        return []
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def insert_date_notification(dn,type,extra):
+    
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        query = """INSERT INTO notification_table (`header`,`message`,`key`,`type`,`date`) VALUES (%s,%s,%s,%s,%s)"""  
+        if type == "date-format":
+            error_header = "Date Format Intervention"
+            error_message = "DN - " + dn + " needs user intervention for Date Format."
+            error_key = dn
+            error_type = 'date-format'
+        elif type == "incoterms":
+            error_header = "Incoterms Intervention"
+            error_message = "DN - " + dn + " needs user intervention for Incoterms."
+            error_key =  dn
+            error_type = 'incoterms'
+        elif type == "duplicated-document":
+            error_header = "Document Duplicated"
+            error_message = "DN - " + dn + " has duplicated document."
+            error_key =  extra
+            error_type = 'duplicated-document'
+        elif type == "new-same-document":
+            error_header = "New Same Type Attachment"
+            error_message = "DN - " + dn + " has new document."
+            error_key =  extra
+            error_type = 'duplicated-document'
+        elif type == "multi-doc":
+            error_header = "Multi-Doc Intervention"
+            error_message = "DN - " + dn + " needs user intervention for multiple doc."
+            error_key = extra
+            error_type = 'multi-doc'
+        elif type == "supplier-name":
+            error_header = "Supplier Name Intervention"
+            error_message = "DN - " + dn + " needs user intervention for supplier name."
+            error_key = extra
+            error_type = 'supplier-name'
+        
+        now = datetime.now()
+        date = now.strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute(query, (error_header,error_message,error_key,error_type,date))
+        connection.commit()
+        return
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def set_date_format_for_dn(dn, date_format):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        update_query = """UPDATE attachment_table SET `date_format` = %s WHERE `DN#` = %s;""" 
+        cursor.execute(update_query, (date_format,dn,))
+        connection.commit() 
+        return
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+            
+def set_incoterms_for_dn(dn, incoterms):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        update_query = """UPDATE attachment_table SET `incoterms` = %s WHERE `DN#` = %s;""" 
+        cursor.execute(update_query, (incoterms,dn,))
+        connection.commit() 
+        return
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+            
+
+def get_supplier_information(dn):
+    
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        count_query = """SELECT `Supplier ID` FROM attachment_table WHERE `DN#` = %s;"""  
+        cursor.execute(count_query, (dn,))
+        result = cursor.fetchone()
+        
+        if result:  # Check if a row was returned
+            supplier_id = result[0]  # Extract first column value from the tuple
+
+            # Get vendor details using the extracted supplier_id (now a scalar value)
+            vendor_query = """SELECT `domain`, `vendor_name` FROM supplier_table WHERE `id` = %s;"""  
+            cursor.execute(vendor_query, (supplier_id,))
+            vendor_result = cursor.fetchone()
+            if vendor_result:
+                return {"domain":vendor_result[0],"name":vendor_result[1]}        
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+            
+def delete_database_data(doc_type,dn):
+    
+    
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        if doc_type=="DN":
+            query = """DELETE FROM dn_table WHERE `DN#` = %s""" 
+            cursor.execute(query, (dn,))
+        if doc_type=="INV":
+            query = """DELETE FROM inv_table WHERE `DN#` = %s""" 
+            cursor.execute(query, (dn,))
+        if doc_type=="COA":
+            query = """DELETE FROM coa_table WHERE `DN#` = %s""" 
+            cursor.execute(query, (dn,))
+        if doc_type=="BOL":
+            query = """DELETE FROM bol_table WHERE `DN#` = %s""" 
+            cursor.execute(query, (dn,))
+        connection.commit() 
+
+
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+def insert_attachment_state(dn,doc_type,document_name,drive_file_id):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        query = """INSERT INTO duplicated_attachment (`DN#`, `drive_file_id`,`doc_type`,`source`) VALUES (%s,%s,%s,%s)"""  
+        cursor.execute(query, (dn,drive_file_id,doc_type,document_name))
+        connection.commit()
+        return
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+
+def duplicated_test(doc_type, dn):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        
+        cursor.execute("SELECT `id`,`drive_file_id`,`source` FROM duplicated_attachment WHERE `DN#` = %s AND `doc_type`=%s", (dn,doc_type))
+        results = cursor.fetchall()
+        
+        return len(results)
+    
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None  # Ensure function always returns a value
+
+    finally:
+        # Close the database connection
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+            print("MySQL connection closed.")
+
+
+def insert_into_ocr_table(ocr_data, doc_type,dn):
+    try:
+        connection = mysql.connector.connect(
+            host=database_host,
+            user=database_user,
+            password=database_password,  # No password as per your setup
+            database=database_name
+        )
+        cursor = connection.cursor()
+        pdf_path = ocr_data["pdf_path"]
+        results = ocr_data["matches"]
+        print("****************************")
+        print(results)
+        for result in results:
+            cursor.execute("INSERT INTO ocr_table (`DN#`,`doc_type`,`index`,`key`,`x`,`y`,`width`,`height`,`page_width`,`page_height`,`page`,`pdf_path`) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(dn,doc_type,result["index"],result["key"],result["x"],result["y"],result["width"],result["height"],result["page_width"],result["page_height"],result["page"],pdf_path))
+        connection.commit()
+
+
+        # cursor.execute("SELECT `id`,`drive_file_id`,`source` FROM duplicated_attachment WHERE `DN#` = %s AND `doc_type`=%s", (dn,doc_type))
+        # results = cursor.fetchall()
+        
+        # return len(results)
+        return []
     
     except mysql.connector.Error as err:
         print(f"Error: {err}")

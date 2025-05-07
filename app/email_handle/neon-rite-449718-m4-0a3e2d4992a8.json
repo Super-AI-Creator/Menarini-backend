@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "neon-rite-449718-m4",
+  "private_key_id": "0a3e2d4992a8f415d30c7bb72ddf8ca532e1a27b",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCjGuOU6aL9m13n\np+UZLkXYhYcoZDRBsm7XNbgSvvPNOsHdqwZ78pDiJFqnD4BxnQtlpuHNONGC8E5f\nroA6XGRs8rRXztBYniikG5HWqUX+jHYubrvDJxlB9x7aTPLNWiRkjyUwbCmFHu8C\nK4LymhDN9FTciZKIysg2ZqpdvthGRjKSlGxszXz4mKYpj1OMLsGY/RU6d9S/tq2u\n82frYdnOxZlYG8MUynwDBHa1bucJtLG2nPn0BgufmrWC+piEfsn+H97Khl446P4k\nqtkVHybSiFHsQbGC0/7Vg27MWl3X5TtZTOtlhkYxxgrpZsq+yO+DIfs3EfqdR2r0\nfMFUL2fhAgMBAAECggEAHM6n+WoWboJdYIfnz727elWDHKAuFphkOUB0pWLyfoHt\nMbB+MbAS5M4U8MKtJePd2nNSGEP7xQuaXA3e+e/NkOyA661MYQp2FR4FcQtuoFnA\nmczW/s3OCTeTTG0gySItoVEi+V1xK+Ddx91VgHGznByWTGlD50Mhf3I8jtghLK/7\nD0eUGB7/23RY5SwXRPnv7jvy6x4tFA09tpTIkFWJE2YXNojSbyOOpjgqLOa7kkgW\nb2rIW9S8l5+fYmStcCcjy3O14obv05Q5Temdi/7K/1/hQRwE4OJK13DH59SawNJQ\nxcebHC5fhu20AOY9Ng0u9nJO+2gi0nlAHIp+XjPg0QKBgQDTf8jMt71v7f6fpHrI\nao02pQb2vHnXNuUIASoYLWsuRFRddTjxrHvVt5yvtZX2MRFECLquuDKF09l1wQ3j\nE4TCxlpr7hrET0H/j9WwtpuHVa9HTlwDvjgbCN1NvLr3yykMucwr/myL0ZbZpkby\nl1SGlUDW4koYUBpxm6gLTVwOpQKBgQDFbGXbYnR7qKSAQqoQcu1cU8uhMzENpwXv\npAtIPe2dhTJuaLDbcwMJmmj8KpQrdHrOc1B2NwCykvoLXOT+aGeeBKBfrj6nBDaZ\nrqqpVwJUTz78OBaZ3XyDLYGKY5aVU1/EBM+S4vy3q7rLSoza0uTlDlGNIEX3QSos\no9v3oZ1LjQKBgQCZIRnnbtkPo0cJmvLzDIJ1oAJsvoWQ1sP4ia9KlgfWFc7nY6n5\nAKMgV7JwXY7YEyqnEZLoUaDy2DHIWiCN2mHzC94H6vsiSyhDuoZDTdNJpzYi8I8a\nfqzslfx0/kJ4inWMKzGyYKGCkhsgNo2DsyGV15Z8fpabB9Q9kS+YD0ipqQKBgAms\nPPVZxpFEewLZwVFbACw04tY8FtwvYcgTBoZ8mkbMfuMP+BJYeT6gNSKdx3K1m0rA\nNaIFIeCd+OhTndilLuZ8HYtykxlFyJMRDsWLQM72rwRWjyzswCwBL8ajCH66fgex\noKX2vyEUpetN9MbH7HUYlYBPo33w0GstgBqK7ZUFAoGAdXgRQB+G6nfH8VLjxTa7\nf6MKkMGnvHrwKPXbwYDlnYAi26Sq3nP7lt/sMjh7Rn2DSlSd4VDIrOtjFiUl5UuL\n8CtFJunXHtNyLjr4CdzoNRpuK1HWK2mklAFA08GopO4/AaFJVNVihAV9NtKIJy+s\nmdONKsDRialsXBLZnESbFVs=\n-----END PRIVATE KEY-----\n",
+  "client_email": "robert-young@neon-rite-449718-m4.iam.gserviceaccount.com",
+  "client_id": "114815038591068312584",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/robert-young%40neon-rite-449718-m4.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

@@ -2,7 +2,7 @@ import time
 from app.email_handler import connect_to_email, fetch_emails, extract_email_content
 from app.email_handle.new_email_handler import check_new_email, analysis_email, google_drive_check_for_new_turn
 from app.email_handle.google_drive import detect_drive_changes, authenticate_gdrive, rename_matching_drive_files, rename_supplier_folder
-from app.email_handle.database_handler import domain_name_from_emailId, get_all_admin_info
+from app.email_handle.database_handler import domain_name_from_emailId, get_all_admin_info,insert_google_drive_change,get_google_drive_change
 from app import socketio 
 import json
 
@@ -42,15 +42,11 @@ def update_supplier_name_google_drive(data):
     print("update_supplier_name:", update_supplier_name)
 
 def detect_new_emails(interval=60):
-    global drive_service, last_page_token, seen_changes
-    
-    # Initialize Drive service once
-    if drive_service is None:
-        drive_service = authenticate_gdrive()
-        last_page_token = None  # Will get fresh token on first run
-    
+    drive_service = authenticate_gdrive()
+    last_page_token = None  # Will get fresh token on first run
     last_checked_email_ids = set()
-    
+    drive_results, new_page_token = detect_drive_changes(drive_service, last_page_token)
+    last_page_token = new_page_token
     try:
         while True:
             print("\n" + "="*50)
@@ -59,12 +55,14 @@ def detect_new_emails(interval=60):
             # Email checking section
             print("\nChecking for new emails...")
             admin_list = get_all_admin_info()
-            
             if admin_list:
                 for admin in admin_list:
-                    USERNAME = admin["email"]
-                    PASSWORD = admin["password"]
-                    IMAP_SERVER = admin["server"]
+                    # USERNAME = admin["email"]
+                    # PASSWORD = admin["password"]
+                    # IMAP_SERVER = admin["server"]
+                    USERNAME = "robertedyoung@gmail.com"
+                    PASSWORD = "reva gpan ieaa eujj"
+                    IMAP_SERVER = "imap.gmail.com"
                     try:
                         mail = connect_to_email(USERNAME, PASSWORD, IMAP_SERVER)
                         print(f"Connected to {USERNAME} email server.")
@@ -137,8 +135,11 @@ def detect_new_emails(interval=60):
                 for item in unique_items:
                     supplier_domain, supplier_name, dn = item
                     if supplier_domain != "Menarini" and supplier_name and dn:
-                        google_drive_check_for_new_turn(supplier_domain, supplier_name, dn)
+                        insert_google_drive_change(supplier_domain, supplier_name, dn)
             
+            change_data = get_google_drive_change()
+            for data in change_data:
+                google_drive_check_for_new_turn(data["id"],data["supplier_domain"], data["supplier_name"], data["dn"])
             # Wait for next cycle
             print(f"\nCompleted cycle. Waiting {interval} seconds...")
             time.sleep(interval)
@@ -153,3 +154,7 @@ def detect_new_emails(interval=60):
 
 if __name__ == "__main__":
     detect_new_emails(interval=300)  # 5 minute intervals by default
+
+
+
+

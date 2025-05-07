@@ -122,7 +122,7 @@ def create_prompt_from_text(parsed_text):
     return prompt
 def create_dn_prompt_from_text(parsed_text):
     # fields = ['PO#','PL#','INV Item Count', 'COA Item Count','Supplier','Email Address','Supplier Flag','Supplier Estimate Name', 'DN#','Item Code' ,  'Quantity', 'Batch#', 'Document Date', 'Incoterms', 'Date of loading', ' Executed on', 'Batch#', 'Manufacturing Date', 'Expiry Date', 'Best Before Date', 'Date of receipt','Posting Date',  'Packing Slip#', 'INV NO#']
-    fields = ['PO#', 'Vendor Part Code', 'Customer Part Code', 'GIC Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm', 'Item Description']
+    fields = ['PO#', 'Item Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm', 'Item Description']
     # "1. Purchase order number
     # 2. Item codes (Vendor and/or Menarini)
     # 3. Packing slip number
@@ -142,9 +142,44 @@ def create_dn_prompt_from_text(parsed_text):
         f"{', '.join(fields)}.\n\n"
         "The PO# is one or several."
         "And for one PO# there is one or several Items."
-        "There are Quantity, Batch#, Manufacturing Date, Expiry Date for each Item."
-        "Lot is same as Batch#"
+
         "The Quantity is number. So give me only number without unit like `KG` or so on."
+        "As the result of uncorrect ocr, the PO# can be expressed like 'Po1-12324' or 'P0-12312' or 'P0O1-12312'."
+        "The PO# format is like this, PO123-1234. Not 'Po' or 'P0O1' or 'P0' before '-'. So if the PO# is not correct, update it."
+        "The Batch# can be expressed like these in document..\n"
+        "Batch / Batch No. / Lot / Lot No. / Lot #\n\n"
+        
+        "The Manufacturing Date can be expressed like these in document..\n"
+        "Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n\n"
+
+        "The Expiry Date can be expressed like these in document.\n"
+        "Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n\n"
+
+        "The Quantity can be expressed like these in document.\n"
+        "Quantity / Shipped Quantity / Quantity Shipped / Despatched Quantity / Quantity Depatched / Delivered"
+
+        "The Packing Slip# can be expressed like these in document\n"
+        "Delivery Note / Despatch Note / DN / D/N / Packing List / P/L / Packing Slip\n\n"
+
+        "The Item Code can be expressed like these in document\n"
+        "Item / Item No. / Item Number / Customer Reference Code / Cust. Ref. Code / Product No. / Product Code / Product Number / Material Code / Material No. / Customer Part Code\n\n"
+
+        "The Incoterm can be expressed like these in document\n"
+        "Incoterms / Shipping Terms\n\n"
+
+        "\nImportant Rule:\n"
+        "These are e.g value for each fields. Look carfully about the expression form for each value."
+
+        "Item Code : RBMENNEBVN0004\n"
+        "Quantity : 46660 (* there is no `KG` or other unit. Remove the `,` for quantity. It must be int for cacluate.)\n"
+        "Batch# : 31303B\n"
+        
+        "Item Description:NEBILET 5MG 14TABS VN SALES (VIETNAM)\n"
+        "Expiry Date : 09/02/2026\n"
+        "PO#: PO22-00014\n"
+
+        "So if there is mistake in the document, correct them as right form. Carfully consider the difference between `0` and `O` , `1` and `l`."
+
         "Please return the extracted information as a JSON object."
         "Ensure your response follows this JSON format exactly."
         "Please send me data as like this."
@@ -160,7 +195,7 @@ def create_dn_prompt_from_text(parsed_text):
 
 def create_inv_prompt_from_text(parsed_text):
     # fields = ['PO#','PL#','INV Item Count', 'COA Item Count','Supplier','Email Address','Supplier Flag','Supplier Estimate Name', 'DN#','Item Code' ,  'Quantity', 'Batch#', 'Document Date', 'Incoterms', 'Date of loading', ' Executed on', 'Batch#', 'Manufacturing Date', 'Expiry Date', 'Best Before Date', 'Date of receipt','Posting Date',  'Packing Slip#', 'INV NO#']
-    fields = ['PO#', 'Vendor Part Code', 'Customer Part Code', 'GIC Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm','Invoice Number','Item Description']
+    fields = ['PO#', 'Item Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm','Invoice Number','Item Description']
     # "1. Purchase order number
     # 2. Item codes (Vendor and/or Menarini)
     # 3. Packing slip number
@@ -180,41 +215,92 @@ def create_inv_prompt_from_text(parsed_text):
         f"{', '.join(fields)}.\n\n"
         "The PO# is one or several."
         "And for one PO# there is one or several Items."
-        "There are Quantity, Batch#, Manufacturing Date, Expiry Date for each Item."
-        "Lot is same as Batch#"
         "The Quantity is number. So give me only number without unit like `KG` or so on."
+
+        "The Batch# can be expressed like these in document..\n"
+        "Batch / Batch No. / Lot / Lot No. / Lot #\n\n"
+        
+        "The Manufacturing Date can be expressed like these in document.\n"
+        "Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n\n"
+
+        "The Expiry Date can be expressed like these in document.\n"
+        "Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n\n"
+
+        "The Quantity can be expressed like these in document.\n"
+        "Quantity / Shipped Quantity / Quantity Shipped / Despatched Quantity / Quantity Depatched / Delivered"
+
+        "The Packing Slip# can be expressed like these in document\n"
+        "Delivery Note / Despatch Note / DN / D/N / Packing List / P/L / Packing Slip\n\n"
+        
+        "The Item Code can be expressed like these in document\n"
+        "Item / Item No. / Item Number / Customer Reference Code / Cust. Ref. Code / Product No. / Product Code / Product Number / Material Code / Material No. / Customer Part Code\n\n"
+
+        "The Invoice Number can be expressed like these in document.\n"
+        "Invoice / Tax Invoice / Tax Inv. / Commercial Invoice / Commercial Inv.\n\n"
+
+        "The Incoterm can be expressed like these in document\n"
+        "Incoterms / Shipping Terms\n\n"
+
+        "\nImportant Rule:\n"
+        "The PO# can be expressed like these - `P0-123456` or `PO01-123456` or `P0O1-2313` or `Po-32531`"
+        "But the exact PO# expression is like this - `PO1-123456` or `PO12-123456`"
+        "These are e.g value for each fields. Look carfully about the expression form for each value."
+
+        "Item Code : RBMENNEBVN0004\n"
+        "Quantity : 46660 (* there is no `KG` or other unit. Remove the `,` for quantity. It must be int for cacluate.)\n"
+        "Batch# : 31303B\n"
+        "Item Description:NEBILET 5MG 14TABS VN SALES (VIETNAM)\n"
+        "Expiry Date : 09/02/2026\n"
+        "PO#: PO22-00014\n"
+
+        "So if there is mistake in the document, correct them as right form. Carfully consider the difference between `0` and `O` , `1` and `l`."
+
         "Please return the extracted information as a JSON object."
         "Ensure your response follows this JSON format exactly."
         "Please send me data as like this."
         "[\n"
                 "   {\n"
                 "     \"PO#\": \"1345245\",\n"
-                "     \"Item Code:\": \"Q1234\",\n"
+                "     \"Item Code\": \"Q1234\",\n"
                 "   }\n"
         "]\n"
     )
     return prompt
 
 
-
 def create_coa_prompt_from_text(parsed_text):
-    # fields = ['PO#','PL#','INV Item Count', 'COA Item Count','Supplier','Email Address','Supplier Flag','Supplier Estimate Name', 'DN#','Item Code' ,  'Quantity', 'Batch#', 'Document Date', 'Incoterms', 'Date of loading', ' Executed on', 'Batch#', 'Manufacturing Date', 'Expiry Date', 'Best Before Date', 'Date of receipt','Posting Date',  'Packing Slip#', 'INV NO#']
-    fields = ['Vendor Part Code', 'Customer Part Code', 'GIC Code','Item Description','Manufacturing Date', 'Expiry Date']    # "1. Purchase order number
+    fields = ['Item Description', 'Manufacturing Date', 'Expiry Date', 'Batch#']
+    
     prompt = (
-        "This document is COA."
-        f"{', '.join(parsed_text)}.\n\n"
-        "Please get these field."
-        f"{', '.join(fields)}.\n\n"
-        "Please return the extracted information as a JSON object."
-        "Ensure your response follows this JSON format exactly."
-        "Please send me data as like this."
+        "This document is a COA (Certificate of Analysis).\n"
+        f"{', '.join(parsed_text)}\n\n"
+        
+        "Please extract the following fields for each item in the document:\n"
+        f"{', '.join(fields)}\n\n"
+        
+        "These fields can appear in various forms:\n"
+        "- Manufacturing Date: Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n"
+        "- Expiry Date: Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n"
+        "- Batch#: Batch / Batch Number / Batch No. / Lot / Lot No. / Lot #\n"
+        "- Item Description: A descriptive name of the product/item\n\n"
+        
+        "Example values:\n"
+        "- Batch#: 31303B\n"
+        "- Item Description: NEBILET 5MG 14TABS VN SALES (VIETNAM)\n"
+        "- Manufacturing Date: 09/02/2023\n"
+        "- Expiry Date: 09/02/2026\n\n"
+        
+        "Please return the extracted data as a JSON array of objects, like this:\n"
         "[\n"
-                "   {\n"
-                "     \"Vendor Part Code\": \"1345245\",\n"
-                "     \"Customer Part Code:\": \"Q1234\",\n"
-                "   }\n"
+        "  {\n"
+        "    \"Item Description\": \"NEBILET 5MG 14TABS VN SALES (VIETNAM)\",\n"
+        "    \"Manufacturing Date\": \"09/02/2023\",\n"
+        "    \"Expiry Date\": \"09/02/2026\",\n"
+        "    \"Batch#\": \"31303B\"\n"
+        "  }\n"
         "]\n"
     )
+    
     return prompt
 
 
@@ -227,13 +313,20 @@ def create_bol_prompt_from_text(parsed_text):
         f"{', '.join(parsed_text)}.\n\n"
         "Please get these field."
         f"{', '.join(fields)}.\n\n"
+
+        "The Posting Date can be expressed like these in document.\n\n"
+        "Posting Date/Shipped On Board Date / ETD / On Board Date / Executed On / Flight/Date / Place and date of issue / Requested Flight Date\n\n"
+
+        "The Incoterm can be expressed like these in document\n"
+        "Incoterms / Shipping Terms\n\n"
+
         "Please return the extracted information as a JSON object."
         "Ensure your response follows this JSON format exactly."
         "Please send me data as like this."
         "[\n"
                 "   {\n"
                 "     \"Incoterm\": \"1345245\",\n"
-                "     \"Posting Date:\": \"Q1234\",\n"
+                "     \"Posting Date\": \"Q1234\",\n"
                 "   }\n"
         "]\n"
     )
@@ -241,9 +334,9 @@ def create_bol_prompt_from_text(parsed_text):
 
 def create_multi_prompt_from_text(parsed_text, doc_types):
     # fields = ['PO#','PL#','INV Item Count', 'COA Item Count','Supplier','Email Address','Supplier Flag','Supplier Estimate Name', 'DN#','Item Code' ,  'Quantity', 'Batch#', 'Document Date', 'Incoterms', 'Date of loading', ' Executed on', 'Batch#', 'Manufacturing Date', 'Expiry Date', 'Best Before Date', 'Date of receipt','Posting Date',  'Packing Slip#', 'INV NO#']
-    dn_fields = ['PO#', 'Vendor Part Code', 'Customer Part Code', 'GIC Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm', 'Item Description']
-    inv_fields = ['PO#', 'Vendor Part Code', 'Customer Part Code', 'GIC Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm','Invoice Number','Item Description']
-    coa_fields = ['Vendor Part Code', 'Customer Part Code', 'GIC Code','Item Description','Manufacturing Date', 'Expiry Date']
+    dn_fields = ['PO#', 'Item Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm', 'Item Description']
+    inv_fields = ['PO#', 'Item Code','Packing Slip#','Quantity','Batch#','Manufacturing Date', 'Expiry Date', 'Document Date', 'Supplier Name', 'Incoterm','Invoice Number','Item Description']
+    coa_fields = ['Item Description','Manufacturing Date', 'Expiry Date','Batch#']
     bol_fields = ['Incoterm','Posting Date']
     # "1. Item Code
     # 2. Item Description
@@ -259,22 +352,71 @@ def create_multi_prompt_from_text(parsed_text, doc_types):
         f"{', '.join(dn_fields)}.\n\n"
         "The PO# is one or several."
         "And for one PO# there is one or several Items."
-        "There are Quantity, Batch#, Manufacturing Date, Expiry Date for each Item."
-        "Lot is same as Batch#"
+
+        "The Quantity is number. So give me only number without unit like `KG` or so on."
+
+        "The Batch# can be expressed like these in document..\n"
+        "Batch / Batch No. / Lot / Lot No. / Lot #\n\n"
+        
+        "The Manufacturing Date can be expressed like these in document..\n"
+        "Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n\n"
+
+        "The Expiry Date can be expressed like these in document.\n"
+        "Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n\n"
+
+        "The Quantity can be expressed like these in document.\n"
+        "Quantity / Shipped Quantity / Quantity Shipped / Despatched Quantity / Quantity Depatched / Delivered"
+
+        "The Packing Slip# can be expressed like these in document\n"
+        "Delivery Note / Despatch Note / DN / D/N / Packing List / P/L / Packing Slip\n\n"
+
+        "The Item Code can be expressed like these in document\n"
+        "Item / Item No. / Item Number / Customer Reference Code / Cust. Ref. Code / Product No. / Product Code / Product Number / Material Code / Material No. / Customer Part Code\n\n"
         
         "Please get these field in INV part."
         f"{', '.join(inv_fields)}.\n\n"
         "The PO# is one or several."
         "And for one PO# there is one or several Items."
-        "There are Quantity, Batch#, Manufacturing Date, Expiry Date for each Item."
-        "Lot is same as Batch#"
+
+        "The Quantity is number. So give me only number without unit like `KG` or so on."
+
+        "The Batch# can be expressed like these in document..\n"
+        "Batch / Batch No. / Lot / Lot No. / Lot #\n\n"
+        
+        "The Manufacturing Date can be expressed like these in document.\n"
+        "Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n\n"
+
+        "The Expiry Date can be expressed like these in document.\n"
+        "Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n\n"
+
+        "The Quantity can be expressed like these in document.\n"
+        "Quantity / Shipped Quantity / Quantity Shipped / Despatched Quantity / Quantity Depatched / Delivered"
+
+        "The Packing Slip# can be expressed like these in document\n"
+        "Delivery Note / Despatch Note / DN / D/N / Packing List / P/L / Packing Slip\n\n"
+        
+        "The Item Code can be expressed like these in document\n"
+        "Item / Item No. / Item Number / Customer Reference Code / Cust. Ref. Code / Product No. / Product Code / Product Number / Material Code / Material No. / Customer Part Code\n\n"
+
+        "The Invoice Number can be expressed like these in document.\n"
+        "Invoice / Tax Invoice / Tax Inv. / Commercial Invoice / Commercial Inv.\n\n"
         
         "Please get these field in COA part."
         f"{', '.join(coa_fields)}.\n\n"
+
+        "The Manufacturing Date can be expressed like these in document.\n"
+        "Manufacturing Date / Mfg Date / Produced On / MD / Manufacture Date / Date of Manufacture\n\n"
+
+        "The Expiry Date can be expressed like these in document.\n"
+        "Expiry Date / Exp Date / ED / Best Before Date / Date of Expiry / Retest Date\n\n"
         
+        "The Batch# can be expressed like these in document..\n"
+        "Batch / Batch No. / Lot / Lot No. / Lot #\n\n"
         
         "Please get these field in Bill of Lading and Air Waybill part."
         f"{', '.join(bol_fields)}.\n\n"
+        "The Posting Date can be expressed like these in document.\n\n"
+        "Posting Date/Shipped On Board Date / ETD / On Board Date / Executed On / Flight/Date / Place and date of issue / Requested Flight Date\n\n"
         
         "Please return the extracted information as a JSON object."
         "Ensure your response follows this JSON format exactly."
@@ -284,7 +426,7 @@ def create_multi_prompt_from_text(parsed_text, doc_types):
                 "   {\n"
                 "     \"Doc Type\": \"INV\",\n"
                 "     \"PO#\": \"1345245\",\n"
-                "     \"Item Code:\": \"Q1234\",\n"
+                "     \"Item Code\": \"Q1234\",\n"
                 "   },\n"
             "],\n"
             
@@ -293,7 +435,7 @@ def create_multi_prompt_from_text(parsed_text, doc_types):
                 "   {\n"
                 "     \"Doc Type\": \"DN\",\n"
                 "     \"PO#\": \"1345245\",\n"
-                "     \"Item Code:\": \"Q1234\",\n"
+                "     \"Item Code\": \"Q1234\",\n"
                 "   },\n"
             "],\n"
             

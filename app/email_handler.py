@@ -9,6 +9,7 @@ def connect_to_email(username, password, imap_server):
     print('***************')
     print(username, password, imap_server)
     mail = imaplib.IMAP4_SSL(imap_server)
+    mail._encoding = 'utf-8' 
     mail.login(username, password)
     return mail
 

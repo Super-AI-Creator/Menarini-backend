@@ -7,11 +7,19 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.errors import HttpError
+
+from app.env import SERVICE_ACCOUNT_FILE,FOLDER_ID
+# SERVICE_ACCOUNT_FILE
 # from app.email_handle.new_email_handler import google_drive_check_for_new_turn
 # If modifying the scopes, delete the file token.json
 
-SERVICE_ACCOUNT_FILE = r'D:\KingTiger\email\Email_po_extraction-main\app\email_handle\neon-rite-449718-m4-0a3e2d4992a8.json'  # Path to your service account JSON file
-FOLDER_ID = '1dIgQL8iZKT2EMT_bBDtJCI1PSlfei0FG' 
+# SERVICE_ACCOUNT_FILE = r'E:\monte_working\Menarini-backend-main\Menarini-backend-main\app\email_handle\neon-rite-449718-m4-0a3e2d4992a8.json'  # Path to your service account JSON file
+# FOLDER_ID = '1dIgQL8iZKT2EMT_bBDtJCI1PSlfei0FG' 
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, SERVICE_ACCOUNT_FILE)
+FOLDER_ID = FOLDER_ID
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 def authenticate_gdrive():
@@ -90,6 +98,16 @@ def sanitize_filename(filename):
     """Removes special characters from filenames."""
     return re.sub(r'[<>:"/\\|?*]', '_', filename)
 
+def delete_file_from_drive(file_id):
+    """Deletes a file from Google Drive by file ID."""
+    service = authenticate_gdrive()
+    try:
+        service.files().delete(fileId=file_id).execute()
+        print(f"✅ File with ID {file_id} deleted successfully.")
+        return True
+    except HttpError as error:
+        print(f"❌ An error occurred while deleting file ID {file_id}: {error}")
+        return False
 
 def download_file_from_drive(file_id, filename,DOWNLOAD_FOLDER):
     """Downloads a file from Google Drive given its file_id."""

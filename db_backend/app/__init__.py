@@ -3,7 +3,8 @@ from flask_jwt_extended import JWTManager
 from .routes import main_bp
 from flask_mail import Mail
 from . import  auth
-from . import  dn_handler  # Import auth
+from . import  dn_handler
+from . import  ax09   # Import auth
 
 mail = Mail()
 def create_app(config_class='config.Config'):
@@ -15,5 +16,6 @@ def create_app(config_class='config.Config'):
     app.register_blueprint(main_bp)
     app.register_blueprint(auth.bp, url_prefix='/auth')
     app.register_blueprint(dn_handler.dn_bp, url_prefix='/dn')
+    app.register_blueprint(ax09.ax_bp, url_prefix='/ax09')
     jwt = JWTManager(app)
     return app

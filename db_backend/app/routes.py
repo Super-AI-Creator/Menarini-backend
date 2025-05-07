@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request, current_app,send_from_directory
-from .database_handler import get_supplier_id_with_vendor_name,get_all_supplier,update_logo_info,get_all_logo_info,get_logo_with_email,get_all_data,new_logsheet,get_all_email,get_gmail_password,get_all_supplier_name,update_multi_doc,update_supplier_name,get_email_error, get_attachment_list_from_dn,get_attachment_list_from_email,get_all_emailId,complete_flag, get_dn_from_emailID,get_document_error_with_email, get_supplier_from_email, get_multi_doc
+from .database_handler import update_notification,get_all_notification,get_supplier_id_with_vendor_name,get_all_supplier,update_logo_info,get_all_logo_info,get_logo_with_email,get_all_data,new_logsheet,get_all_email,get_gmail_password,get_all_supplier_name,update_multi_doc,update_supplier_name,get_email_error, get_attachment_list_from_dn,get_attachment_list_from_email,get_all_emailId,complete_flag, get_dn_from_emailID,get_document_error_with_email, get_supplier_from_email, get_multi_doc
 from .email_handler import connect_to_email, fetch_emails, extract_email_content
 import os
 main_bp = Blueprint('main', __name__)
@@ -215,7 +215,7 @@ def download_file(filename):
   
 @main_bp.route('/ocr_downloads/<filename>')
 def ocr_download_file(filename):
-    downloads_path = os.path.join(os.getcwd(), 'ocr_downloads')
+    downloads_path = os.path.join(os.getcwd(), '../Downloads')
     return send_from_directory(downloads_path, filename)
   
 @main_bp.route('/logos/<filename>')
@@ -331,4 +331,23 @@ def get_all_sheet_data():
   data = request.get_json()
   email = data.get("email")
   result = get_all_data(email)
+  return result
+
+
+@main_bp.route('/notification/get_all_data', methods=['POST'])
+def get_all_notification_data():
+  data = request.get_json()
+  email = data.get("email")
+  print(email)
+  result = get_all_notification(email)
+  return result
+
+@main_bp.route('/notification/user_intervention', methods=['POST'])
+def user_intervention():
+  data = request.get_json()
+  type = data.get("type")
+  incoterm = data.get("incoterm")
+  dateFormat = data.get("dateFormat")
+  dn = data.get("DN#")
+  result = update_notification(dn,type,incoterm,dateFormat)
   return result
